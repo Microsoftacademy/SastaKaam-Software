@@ -578,8 +578,10 @@
             <button id="addBookmarkBtn">Add</button>
             <button id="backupBtn" class="backup-btn">Backup</button>
             <button id="restoreBtn" class="backup-btn">Restore</button>
+            <button id="mergeLinksBtn" type="button" title="Import Google Links" aria-label="Merge Links" style="background:#0f766e;width:34px;height:34px;padding:0;border-radius:10px;font-size:16px;line-height:1;flex:0 0 34px;" onclick="">⇧</button>
           </div>
           <input type="file" id="restoreInput" accept=".json" style="display: none;" />
+          <input type="file" id="mergeLinksInput" accept=".html,.htm,.json, text/html, application/json" style="display:none;" />
 
           <!-- Quick Notes + Support same row -->
           <div id="quickSupportRow" style="display:flex;align-items:center;justify-content:flex-end;gap:8px;width:100%;">
@@ -948,5 +950,82 @@ header.bookmarks-header{position:sticky;top:0;z-index:1000;background:var(--bg);
   else init();
 })();
 </script>
+<script id="sastaMergeLinksFeature">
+(function(){
+  'use strict';
+  var button=document.getElementById('mergeLinksBtn');
+  var picker=document.getElementById('mergeLinksInput');
+  if(!button||!picker)return;
+  function collectJson(value, out){
+    if(!value)return;
+    if(Array.isArray(value)){value.forEach(function(x){collectJson(x,out)});return;}
+    if(typeof value!=='object')return;
+    var url=value.url||value.href||value.link||value.uri;
+    if(typeof url==='string' && /^https?:\/\//i.test(url.trim())){
+      out.push({url:url.trim(),name:String(value.name||value.title||value.label||'').trim()});
+    }
+    Object.keys(value).forEach(function(k){if(value[k]&&typeof value[k]==='object')collectJson(value[k],out)});
+  }
+  function extract(html){
+    var doc=new DOMParser().parseFromString(html,'text/html');
+    return Array.prototype.map.call(doc.querySelectorAll('a[href]'),function(a){return {url:a.href,name:(a.textContent||a.getAttribute('title')||'').trim()}})
+      .filter(function(x){return /^https?:\/\//i.test(x.url)});
+  }
+  function normalize(u){try{var x=new URL(u);x.hash='';return x.href.replace(/\/$/,'').toLowerCase()}catch(e){return String(u||'').trim().toLowerCase()}}
+  function existingUrls(){
+    var found=new Set();
+    // Dashboard cards are stored per tab. Merge targets only the selected tab,
+    // so a copy in another tab must not block restoring a deleted card here.
+    try{
+      var appState=JSON.parse(localStorage.getItem('onepilot_v3')||'null');
+      var activeEl=document.querySelector('#tabsContainer .tab-item.active');
+      var activeId=activeEl&&activeEl.getAttribute('data-tabid');
+      var activeTab=(appState&&Array.isArray(appState.tabs)?appState.tabs:[]).find(function(tab){return tab.id===activeId;});
+      (activeTab&&Array.isArray(activeTab.bookmarks)?activeTab.bookmarks:[]).forEach(function(bookmark){
+        if(bookmark&&typeof bookmark.url==='string')found.add(normalize(bookmark.url));
+      });
+    }catch(e){console.warn('Could not inspect active-tab bookmarks:',e)}
+    document.querySelectorAll('#bookmarksGrid .bookmark-card').forEach(function(card){
+      card.querySelectorAll('a[href]').forEach(function(a){found.add(normalize(a.href))});
+      ['url','href','link'].forEach(function(k){if(card.dataset&&card.dataset[k])found.add(normalize(card.dataset[k]))});
+      var handler=card.getAttribute('onclick')||'';
+      var matches=handler.match(/https?:[^'"\\\s)]+/g)||[];matches.forEach(function(u){found.add(normalize(u))});
+    });
+    return found;
+  }
+  button.addEventListener('click',function(){picker.value='';picker.click()});
+  picker.addEventListener('change',async function(){
+    var file=picker.files&&picker.files[0];if(!file)return;
+    try{
+      var text=await file.text(), items;
+      if(/\.json$/i.test(file.name)){
+        var parsed=JSON.parse(text);items=[];collectJson(parsed,items);
+      }else items=extract(text);
+      var seen=existingUrls(), unique=[], ignored=0;
+      items.forEach(function(item){var key=normalize(item.url);if(!key||seen.has(key)){ignored++;return}seen.add(key);unique.push(item)});
+      if(!items.length){alert('Is file mein supported links nahi milay. Chrome bookmarks ki HTML export (.html) ya URL wala JSON file select karein.');return;}
+      if(!unique.length){alert('Is active tab mein file ke tamam '+items.length+' links pehle se maujood hain. Agar link delete kar diya hai to us tab ko reload karke file dobara merge karein.');return;}
+      var active=document.querySelector('#tabsContainer .tab-item.active');
+      var tabName=active?(active.textContent||'').trim():'current tab';
+      if(!confirm(unique.length+' naye links current tab ("'+tabName+'") mein add honge. Maujooda links safe rahenge; '+ignored+' duplicate/invalid links skip honge. Continue?'))return;
+      var nameInput=document.getElementById('bookmarkNameInput'),urlInput=document.getElementById('bookmarkUrlInput'),add=document.getElementById('addBookmarkBtn');
+      if(!nameInput||!urlInput||!add)throw new Error('Dashboard ka Add form nahi mila.');
+      var added=0,failed=0;
+      for(var i=0;i<unique.length;i++){
+        var item=unique[i];
+        nameInput.value=item.name||(()=>{try{return new URL(item.url).hostname}catch(e){return item.url}})();
+        urlInput.value=item.url;
+        nameInput.dispatchEvent(new Event('input',{bubbles:true}));urlInput.dispatchEvent(new Event('input',{bubbles:true}));
+        add.click();
+        await new Promise(function(resolve){setTimeout(resolve,120)});
+        var now=existingUrls();if(now.has(normalize(item.url)))added++;else failed++;
+      }
+      alert('Merge mukammal.\nAdd hue: '+added+'\nSkip hue (duplicate/invalid): '+ignored+'\nAdd nahi ho sake: '+failed+'\n\nImported links active tab mein rakhe gaye.');
+    }catch(err){console.error('Merge Links failed:',err);alert('File import nahi ho saki. Chrome bookmarks export HTML ya valid JSON file select karein.');}
+    finally{picker.value=''}
+  });
+})();
+</script>
+
 </body>
   </html>
