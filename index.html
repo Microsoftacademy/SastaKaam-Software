@@ -1137,7 +1137,7 @@ body.skn-collapsed #skLeftNav .skn-item,body.skn-collapsed #skLeftNav .skn-dark{
   if(qn)item(qn,'<img class="skn-img" src="https://cdn-icons-png.flaticon.com/128/12435/12435487.png" alt="">','Quick Notes');
   if(calc)item(calc,'<img class="skn-img" src="https://cdn-icons-png.flaticon.com/128/6451/6451492.png" alt="">','Calculator');
   if(wa)item(wa,'<img class="skn-img" src="https://cdn-icons-png.flaticon.com/128/733/733585.png" alt="">','WhatsApp Support');
-  var dk=document.createElement('div');dk.className='skn-dark';dk.innerHTML='<span class="skn-ic"><img class="skn-img" src="https://cdn-icons-png.flaticon.com/128/6714/6714978.png" alt=""></span><span class="skn-lb">Dark Mode</span><span class="skn-sw"></span>';nav.appendChild(dk);
+  var dk=document.createElement('div');dk.className='skn-dark';dk.innerHTML='<span class="skn-ic"><img class="skn-img" src="https://cdn-icons-png.flaticon.com/128/1312/1312343.png" alt=""></span><span class="skn-lb">Dark Mode</span><span class="skn-sw"></span>';nav.appendChild(dk);
   function isDark(){var a=ms&&ms.querySelector('.active-mode');return !!(a&&a.dataset.mode==='dark')}
   function sync(){dk.classList.toggle('on',isDark());nav.classList.toggle('skn-dk',isDark())}
   dk.onclick=function(){if(!ms)return;var b=ms.querySelector('[data-mode="'+(isDark()?'white':'dark')+'"]');if(b)b.click();setTimeout(sync,50)};
@@ -1244,6 +1244,68 @@ body.skn-collapsed #skLeftNav .skn-item,body.skn-collapsed #skLeftNav .skn-dark{
   });
 })();
 </script>
+<script id="dailyToolboxSoftwareBookmarkReplacement">
+(function(){
+  'use strict';
+  var replacements=[
+    {old:'Toolbox',name:'Dollar to PKR',url:'https://www.google.com/search?q=dollar+to+pkr&oq=dollar+to+pkr&gs_lcrp=EgZjaHJvbWUyBggAEEUYOdIBCDI2OTRqMGo5qAIAsAIB&sourceid=chrome&source=chrome.ob&ie=UTF-8',icon:'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/render/image/public/base44-prod/public/68e460274b273fa11d4117ac/a88dce461_estimatorpklogo.png?width=1200&height=630&resize=contain'},
+    {old:'Software',name:'Google Translator',url:'https://translate.google.com/?sl=ur&tl=en&op=translate',icon:'https://cdn-icons-png.flaticon.com/128/281/281759.png'},
+    {old:'Pixabay',name:'Pinterest',url:'https://www.pinterest.com/',icon:'https://cdn-icons-png.flaticon.com/128/145/145808.png'}
+  ];
+  function norm(v){return String(v||'').trim().toLowerCase()}
+  function updateSavedData(){
+    try{
+      var state=JSON.parse(localStorage.getItem('onepilot_v3')||'null');
+      if(!state||!Array.isArray(state.tabs))return false;
+      var daily=state.tabs.find(function(t){return norm(t&&t.name)==='daily'});
+      if(!daily||!Array.isArray(daily.bookmarks))return false;
+      var changed=false;
+      replacements.forEach(function(r){
+        var item=daily.bookmarks.find(function(b){return norm(b&&b.name)===norm(r.old)});
+        if(!item)return;
+        if(item.name!==r.name){item.name=r.name;changed=true}
+        if(item.url!==r.url){item.url=r.url;changed=true}
+        ['icon','iconUrl','image','imageUrl','favicon'].forEach(function(k){if(k==='icon'||Object.prototype.hasOwnProperty.call(item,k)){if(item[k]!==r.icon){item[k]=r.icon;changed=true}}});
+      });
+      if(changed)localStorage.setItem('onepilot_v3',JSON.stringify(state));
+      return changed;
+    }catch(e){return false}
+  }
+  function updateVisibleCards(){
+    var active=document.querySelector('#tabsContainer .tab-item.active');
+    if(active&&norm(active.textContent).indexOf('daily')!==0)return false;
+    var grid=document.getElementById('bookmarksGrid');if(!grid)return false;
+    var found=0;
+    Array.prototype.forEach.call(grid.querySelectorAll('.bookmark-card'),function(card){
+      var nameEl=card.querySelector('.bookmark-name');
+      var current=norm(nameEl?nameEl.textContent:card.textContent);
+      var r=replacements.find(function(x){return current===norm(x.old)});
+      if(!r)return;
+      found++;
+      if(nameEl)nameEl.textContent=r.name;
+      card.setAttribute('aria-label',r.name);
+      card.dataset.url=r.url;card.setAttribute('data-url',r.url);
+      card.querySelectorAll('a[href]').forEach(function(a){a.href=r.url});
+      var box=card.querySelector('.bookmark-icon');
+      if(box){var img=box.querySelector('img');if(!img){img=document.createElement('img');box.replaceChildren(img)}img.src=r.icon;img.alt=r.name;img.loading='lazy'}
+      if(!card.dataset.dailyReplacementBound){
+        card.dataset.dailyReplacementBound='1';
+        card.addEventListener('click',function(e){e.preventDefault();e.stopImmediatePropagation();window.location.href=r.url},true);
+      }
+    });
+    return found===replacements.length;
+  }
+  function apply(){updateSavedData();updateVisibleCards()}
+  apply();
+  var tries=0,timer=setInterval(function(){apply();if(++tries>=60)clearInterval(timer)},200);
+  var grid=document.getElementById('bookmarksGrid');
+  if(grid)new MutationObserver(apply).observe(grid,{childList:true,subtree:true});
+  var tabs=document.getElementById('tabsContainer');
+  if(tabs)tabs.addEventListener('click',function(){setTimeout(apply,80)});
+  window.addEventListener('storage',apply);
+})();
+</script>
+
 </body>
   </html>
 
@@ -1288,7 +1350,8 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
  }
  function describe(item){
   var n=String(item.name||'').toLowerCase(),c=String(item.category||'').toLowerCase();
-  if(item.kind==='bookmark')return 'Website';
+  if(item.kind==='external')return 'Website';
+  if(item.kind==='bookmark')return item.isCourse?'Course':'Website';
   if(item.source==='Software'){
    if(/chrome|firefox|opera|edge|brave|uc browser|safari/.test(n))return 'Browser app';
    if(/pdf|foxit/.test(n))return 'PDF app';
@@ -1307,17 +1370,33 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
   if(/utility tools/.test(c))return 'Utility tool';
   return 'Tool';
  }
+ function activeBookmarkCategory(){
+  var active=document.querySelector('#tabsContainer .tab-item.active');if(!active||active.dataset.skToolboxTab==='1'||active.dataset.skSoftwareTab==='1')return '';
+  var id=active.dataset.tabid;if(!id)return '';try{var state=JSON.parse(localStorage.getItem('onepilot_v3')||'{}');var tab=(state.tabs||[]).find(function(x){return String(x.id)===String(id)});return tab&&tab.name||''}catch(e){return ''}
+ }
  function collectLocal(q){
-  var grid=document.getElementById('bookmarksGrid');if(!grid)return [];
-  var nq=norm(q);return [].slice.call(grid.querySelectorAll('.bookmark-card')).map(function(card){
+  var grid=document.getElementById('bookmarksGrid');
+  var activeTabEl=document.querySelector('#tabsContainer .tab-item.active');
+  if(activeTabEl&&(activeTabEl.dataset.skToolboxTab==='1'||activeTabEl.dataset.skSoftwareTab==='1'))return [];
+  var category=activeBookmarkCategory()||'';
+  function isCourseCard(c){return [].slice.call(c.children).some(function(el){return !el.children.length&&/^course$/i.test((el.textContent||'').trim())})}
+  var nq=norm(q),local=grid?[].slice.call(grid.querySelectorAll('.bookmark-card')).map(function(card){
    var el=card.querySelector('.bookmark-name');var name=(el?el.textContent:card.textContent||'').trim();
    var a=card.querySelector('a[href]');var url=card.dataset.url||card.getAttribute('data-url')||(a&&a.href)||'';var im=card.querySelector('.bookmark-icon img');var icon=im?(im.currentSrc||im.src||im.getAttribute('src')||''):'';
    if(!name||!norm(name+' '+url+' '+card.textContent).includes(nq))return null;
-   return {kind:'bookmark',source:'Bookmark',category:'',name:name,url:url,icon:icon,card:card};
-  }).filter(Boolean);
+   var courseCard=isCourseCard(card);return {kind:'bookmark',source:'Bookmark',category:courseCard?'Free Courses':category,isCourse:courseCard,name:name,url:url,icon:icon,card:card};
+  }).filter(Boolean):[];
+  var quickLinks=[
+   {kind:'external',source:'Bookmark',category:'Daily',name:'Dollar to PKR',url:'https://www.google.com/search?q=dollar+to+pkr&oq=dollar+to+pkr&gs_lcrp=EgZjaHJvbWUyBggAEEUYOdIBCDI2OTRqMGo5qAIAsAIB&sourceid=chrome&source=chrome.ob&ie=UTF-8',icon:'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/render/image/public/base44-prod/public/68e460274b273fa11d4117ac/a88dce461_estimatorpklogo.png?width=1200&height=630&resize=contain'},
+   {kind:'external',source:'Bookmark',category:'Daily',name:'Google Translator',url:'https://translate.google.com/?sl=ur&tl=en&op=translate',icon:'https://cdn-icons-png.flaticon.com/128/281/281759.png'},
+   {kind:'external',source:'Bookmark',category:'Daily',name:'Pinterest',url:'https://www.pinterest.com/',icon:'https://cdn-icons-png.flaticon.com/128/145/145808.png'}
+  ].filter(function(item){return norm(item.name+' '+item.url).includes(nq)});
+  quickLinks.forEach(function(item){var i=local.findIndex(function(x){return norm(x.name)===norm(item.name)});if(i>=0)local[i]=item;else local.push(item)});
+  return local;
  }
  function decodePage(b64){var bin=atob(b64),bytes=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);return new TextDecoder().decode(bytes)}
  function openPage(item,q){
+  if(item.kind==='external'&&item.url){var panel=document.getElementById('skCrossSearchResults');if(panel)panel.classList.remove('sk-open');window.location.href=item.url;return}
   if(item.kind==='bookmark'&&item.card){var grid=document.getElementById('bookmarksGrid');if(grid)grid.style.display='';var panel=document.getElementById('skCrossSearchResults');if(panel)panel.classList.remove('sk-open');item.card.click();return}
   var modal=document.getElementById('skCrossViewer');
   if(!modal){modal=document.createElement('div');modal.id='skCrossViewer';modal.innerHTML='<div class="sk-cv-box"><div class="sk-cv-head"><div class="sk-cv-title"></div><button type="button" class="sk-cv-close" aria-label="Close">×</button></div><iframe class="sk-cv-frame" title="Search result" loading="eager"></iframe></div>';document.body.appendChild(modal);modal.querySelector('.sk-cv-close').addEventListener('click',function(){modal.classList.remove('sk-open')});modal.addEventListener('click',function(e){if(e.target===modal)modal.classList.remove('sk-open')})}
@@ -1336,6 +1415,7 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
   heading.textContent=isDefault?'Popular cards':'Search results · '+items.length+' result(s)';area.innerHTML='';
   if(!items.length){var empty=document.createElement('div');empty.className='sk-cs-empty';empty.textContent='Koi matching card nahi mila.';area.appendChild(empty);return}
   items.forEach(function(item){
+   if(norm(item.name)==='pinterest')item.icon='https://cdn-icons-png.flaticon.com/128/145/145808.png';
    var card=document.createElement('button');card.type='button';card.className='sk-unified-card';card.setAttribute('aria-label',item.name+' — '+describe(item));
    var iconBox=document.createElement('span');iconBox.className='sk-unified-icon';
    if(item.icon){var img=document.createElement('img');img.src=item.icon;img.alt='';img.loading='lazy';img.onerror=function(){iconBox.textContent='✦'};iconBox.appendChild(img)}else{iconBox.textContent=(item.name||'?').trim().slice(0,1).toUpperCase()||'✦'}
@@ -1358,8 +1438,8 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
   var input=document.getElementById('searchInput');if(!input)return;
   var q=(input.value||'').trim(),original=document.getElementById('bookmarksGrid');var section=ensureCatalog();if(!section)return;var nav=section.querySelector('#skToolboxSubcategories');
   if(!q){if(toolboxTabActive){if(section)section.style.display='';renderToolbox();return}if(softwareTabActive){if(section)section.style.display='';renderSoftware();return}if(original)original.style.display='';if(nav)nav.style.display='none';if(section)section.style.display='none';return}
-  if(section)section.style.display='';if(nav)nav.style.display='none';var nq=norm(q);var local=collectLocal(q);if(original)original.style.display='none';
-  var remote=INDEX.filter(function(x){return norm(x.name+' '+describe(x)).includes(nq)});renderCards(local.concat(remote),q,false);
+  if(section)section.style.display='';if(nav)nav.style.display='none';var nq=norm(q);var local=collectLocal(q).sort(function(a,b){return (b.isCourse?1:0)-(a.isCourse?1:0)});if(original)original.style.display='none';
+  var courseHits=local.filter(function(x){return x.isCourse&&norm(x.name).includes(nq)});var hasWebsiteShortcut=local.some(function(x){return x.kind==='external'&&norm(x.name+' '+x.url).includes(nq)});if(courseHits.length&&!hasWebsiteShortcut){renderCards(courseHits,q,false);return}var remote=INDEX.filter(function(x){return norm(x.name+' '+describe(x)).includes(nq)});var results=local.concat(remote),pinResults=results.filter(function(x){return norm(x.name)==='pinterest'});if(pinResults.length>1){pinResults.sort(function(a,b){function rank(x){return x.kind==='external'?0:(describe(x)==='Course'?1:2)}return rank(a)-rank(b)});var firstPin=results.findIndex(function(x){return norm(x.name)==='pinterest'});results=results.filter(function(x){return norm(x.name)!=='pinterest'});results.splice.apply(results,[firstPin,0].concat(pinResults))}renderCards(results,q,false);
  }
  function ensureToolboxTab(){
   var tabs=document.getElementById('tabsContainer');if(!tabs)return null;var tool=tabs.querySelector('[data-sk-toolbox-tab="1"]');var sw=tabs.querySelector('[data-sk-software-tab="1"]');var add=tabs.querySelector('.add-tab-btn');
@@ -1370,7 +1450,7 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
  function activateToolbox(){toolboxTabActive=true;softwareTabActive=false;selectedToolCategory='All tools';var tabs=document.getElementById('tabsContainer');if(tabs)tabs.querySelectorAll('.tab-item').forEach(function(x){x.classList.remove('active');x.style.removeProperty('color');x.style.removeProperty('border-bottom-color')});ensureToolboxTab();var tab=tabs&&tabs.querySelector('[data-sk-toolbox-tab="1"]');if(tab){tab.classList.add('active');tab.style.color='#4f46e5';tab.style.borderBottomColor='#111827'}render()}
  function activateSoftware(){toolboxTabActive=false;softwareTabActive=true;var tabs=document.getElementById('tabsContainer');if(tabs)tabs.querySelectorAll('.tab-item').forEach(function(x){x.classList.remove('active');x.style.removeProperty('color');x.style.removeProperty('border-bottom-color')});ensureToolboxTab();var tab=tabs&&tabs.querySelector('[data-sk-software-tab="1"]');if(tab){tab.classList.add('active');tab.style.color='#4f46e5';tab.style.borderBottomColor='#111827'}render()}
  function bindToolboxTab(){var tabs=document.getElementById('tabsContainer');if(!tabs)return;ensureToolboxTab();if(tabs.dataset.skToolboxRouting)return;tabs.dataset.skToolboxRouting='1';tabs.addEventListener('click',function(e){var tab=e.target.closest&&e.target.closest('.tab-item');if(!tab)return;if(tab.dataset.skToolboxTab==='1'){e.preventDefault();e.stopImmediatePropagation();activateToolbox();return}if(tab.dataset.skSoftwareTab==='1'){e.preventDefault();e.stopImmediatePropagation();activateSoftware();return}if(toolboxTabActive||softwareTabActive){toolboxTabActive=false;softwareTabActive=false;var custom=tabs.querySelectorAll('[data-sk-toolbox-tab="1"],[data-sk-software-tab="1"]');custom.forEach(function(x){x.classList.remove('active');x.removeAttribute('style')});e.preventDefault();e.stopImmediatePropagation();setTimeout(function(){if(tab.isConnected)tab.click();setTimeout(render,0)},0)}},true);var observer=new MutationObserver(function(){ensureToolboxTab()});observer.observe(tabs,{childList:true});}
- function bind(){bindToolboxTab();var input=document.getElementById('searchInput');if(!input)return;if(!input.dataset.skCrossSearchBound){input.addEventListener('input',render);input.addEventListener('focus',function(){if(input.value.trim())render()});input.addEventListener('keydown',function(e){if(e.key!=='Enter'||!input.value.trim())return;e.preventDefault();render();var first=document.querySelector('#skUnifiedCardGrid .sk-unified-card');if(first)first.click()});input.dataset.skCrossSearchBound='1'}
+ function bind(){bindToolboxTab();var input=document.getElementById('searchInput');if(!input)return;if(!input.dataset.skCrossSearchBound){input.addEventListener('input',render);input.addEventListener('focus',function(){if(input.value.trim())render()});input.addEventListener('keydown',function(e){if(e.key!=='Enter'||!input.value.trim())return;e.preventDefault();e.stopImmediatePropagation();e.stopPropagation();render();var first=document.querySelector('#skUnifiedCardGrid .sk-unified-card');if(first)first.click()},true);input.dataset.skCrossSearchBound='1'}
   document.addEventListener('click',function(e){if(e.target.closest&& (e.target.closest('#skCrossSearchResults')||e.target.closest('#searchInput')||e.target.closest('#sknSearch')))return;var p=document.getElementById('skCrossSearchResults');if(p)p.classList.remove('sk-open')});
   window.addEventListener('resize',function(){var p=document.getElementById('skCrossSearchResults');if(p)positionPanel(p)});window.addEventListener('scroll',function(){var p=document.getElementById('skCrossSearchResults');if(p&&p.classList.contains('sk-open'))positionPanel(p)},true);
   document.addEventListener('keydown',function(e){if(e.key==='Escape'){var p=document.getElementById('skCrossSearchResults');if(p)p.classList.remove('sk-open')}})
