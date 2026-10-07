@@ -1127,7 +1127,7 @@ body.skn-collapsed #skLeftNav .skn-item,body.skn-collapsed #skLeftNav .skn-dark{
   var bulk=document.createElement('button');bulk.type='button';bulk.id='sknBulkBtn';bulk.className='skn-item';bulk.innerHTML='<span class="skn-ic"><img class="skn-img" src="https://cdn-icons-png.flaticon.com/128/1828/1828640.png" alt=""></span><span class="skn-lb">Bulk select</span>';sc.appendChild(bulk);
   var panel=document.createElement('div');panel.id='sknBulkPanel';sc.appendChild(panel);if(tb)panel.appendChild(tb);
   bulk.style.cursor='pointer';
-  bulk.onclick=function(){var isOpen=panel.classList.toggle('open');bulk.classList.toggle('skn-active',isOpen)};
+  bulk.onclick=function(){var isOpen=panel.classList.contains('open');if(!isOpen&&document.body.classList.contains('skn-collapsed')){var collapse=document.getElementById('sknCollapse');if(collapse)collapse.click();else document.body.classList.remove('skn-collapsed')}isOpen=!isOpen;panel.classList.toggle('open',isOpen);bulk.classList.toggle('skn-active',isOpen)};
   tr.classList.add('skn-item');tr.removeAttribute('style');sc.appendChild(tr);
   var busy=false;function paintTrash(){busy=true;var n=tr.getAttribute('data-n')||'';tr.innerHTML='<span class="skn-ic"><img class="skn-img" src="https://cdn-icons-png.flaticon.com/128/6966/6966939.png" alt=""></span><span class="skn-lb">Trash</span>'+(n?'<span class="skn-bdg" style="margin-left:auto;background:#fee2e2;color:#dc2626;border-radius:999px;padding:1px 8px;font-size:.72rem;font-weight:700">'+n+'</span>':'');setTimeout(function(){busy=false},0)}
   (function(){var m=tr.textContent.match(/\((\d+)\)/);tr.setAttribute('data-n',m?m[1]:'')})();paintTrash();
@@ -1416,3 +1416,4 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
 #skToolboxSubcategories .sk-toolbox-category{white-space:nowrap;border:1px solid var(--border,#e5e7eb);border-radius:999px;background:var(--bg2,#f9fafb);color:var(--text2,#374151);font-size:.78rem;font-weight:650;padding:8px 12px;cursor:pointer}
 #skToolboxSubcategories .sk-toolbox-category.active{background:#4f46e5;border-color:#4f46e5;color:#fff}
 </style>
+
