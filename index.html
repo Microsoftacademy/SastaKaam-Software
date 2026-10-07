@@ -1576,3 +1576,63 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
   };
 })();
 </script>
+<script id="sastaTrashBackupPatch">
+/* Backup me Trash Bin + deleted-marks bhi save hote hain; Restore par trash ke cards seedha dashboard par wapas aate hain. */
+(function(){
+ 'use strict';
+ var TRASH_KEY='sastakaam_trash_bin_v1', SEC_KEY='sastakaam_multi_password_v2';
+ var restoring=false, restoreTimer=null;
+ function readJSON(k,fb){try{var v=JSON.parse(localStorage.getItem(k)||'');return v==null?fb:v}catch(e){return fb}}
+ var realParse=JSON.parse;
+
+ /* ---- BACKUP: jo JSON file bane usme trash bhi daal do ---- */
+ var OrigBlob=window.Blob;
+ function PatchedBlob(parts,opts){
+  try{
+   var type=(opts&&opts.type||'').toLowerCase();
+   if(type.indexOf('json')>-1&&parts&&parts.length===1&&typeof parts[0]==='string'){
+    var obj=realParse.call(JSON,parts[0]);
+    if(obj&&typeof obj==='object'&&Array.isArray(obj.tabs)&&!obj.trashBin){
+     obj.trashBin=readJSON(TRASH_KEY,[]);
+     obj.deletedMarks=(readJSON(SEC_KEY,{}).deleted)||{};
+     parts=[JSON.stringify(obj)];
+    }
+   }
+  }catch(e){}
+  return new OrigBlob(parts,opts);
+ }
+ PatchedBlob.prototype=OrigBlob.prototype;
+ try{Object.setPrototypeOf(PatchedBlob,OrigBlob)}catch(e){}
+ window.Blob=PatchedBlob;
+
+ /* ---- RESTORE: backup file parse hote hi trash wapas rakh do ---- */
+ document.addEventListener('change',function(e){
+  if(e.target&&e.target.id==='restoreInput'){
+   restoring=true;clearTimeout(restoreTimer);
+   restoreTimer=setTimeout(function(){restoring=false},15000);
+  }
+ },true);
+ JSON.parse=function(text,reviver){
+  var out=realParse.apply(JSON,arguments);
+  try{
+   if(restoring&&out&&typeof out==='object'&&Array.isArray(out.tabs)&&Array.isArray(out.trashBin)){
+    restoring=false;clearTimeout(restoreTimer);
+    var marks=(out.deletedMarks&&typeof out.deletedMarks==='object')?out.deletedMarks:null;
+    out.trashBin.forEach(function(item){
+     if(!item)return;
+     var tab=out.tabs.find(function(t){return t&&t.id===item.tabId})||out.tabs[0];
+     if(!tab)return;
+     tab.bookmarks=tab.bookmarks||[];
+     var bm=item.bookmark||{id:'bm_'+Date.now().toString(36),name:item.name,url:item.url};
+     var exists=tab.bookmarks.some(function(b){return b&&((bm.url&&b.url===bm.url)||(bm.id&&b.id===bm.id))});
+     if(!exists)tab.bookmarks.push(bm);
+     if(marks&&item.skKey)delete marks[item.skKey];
+    });
+    localStorage.setItem(TRASH_KEY,'[]');
+    if(marks){var sec=readJSON(SEC_KEY,{});sec.deleted=marks;localStorage.setItem(SEC_KEY,JSON.stringify(sec));}
+   }
+  }catch(err){}
+  return out;
+ };
+})();
+</script>
