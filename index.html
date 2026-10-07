@@ -1253,6 +1253,7 @@ body.skn-collapsed #skLeftNav .skn-item,body.skn-collapsed #skLeftNav .skn-dark{
     {old:'Pixabay',name:'Pinterest',url:'https://www.pinterest.com/',icon:'https://cdn-icons-png.flaticon.com/128/145/145808.png'}
   ];
   function norm(v){return String(v||'').trim().toLowerCase()}
+  function canonical(v){return String(v||'').trim().replace(/\/+$/,'').toLowerCase()}
   function updateSavedData(){
     try{
       var state=JSON.parse(localStorage.getItem('onepilot_v3')||'null');
@@ -1260,40 +1261,61 @@ body.skn-collapsed #skLeftNav .skn-item,body.skn-collapsed #skLeftNav .skn-dark{
       var daily=state.tabs.find(function(t){return norm(t&&t.name)==='daily'});
       if(!daily||!Array.isArray(daily.bookmarks))return false;
       var changed=false;
-      replacements.forEach(function(r){
-        var item=daily.bookmarks.find(function(b){return norm(b&&b.name)===norm(r.old)});
+      daily.bookmarks.forEach(function(item){
         if(!item)return;
+        var r=replacements.find(function(x){return norm(item.name)===norm(x.old)||norm(item.name)===norm(x.name)});
+        if(!r)return;
         if(item.name!==r.name){item.name=r.name;changed=true}
         if(item.url!==r.url){item.url=r.url;changed=true}
         ['icon','iconUrl','image','imageUrl','favicon'].forEach(function(k){if(k==='icon'||Object.prototype.hasOwnProperty.call(item,k)){if(item[k]!==r.icon){item[k]=r.icon;changed=true}}});
+      });
+      var seen={};
+      daily.bookmarks=daily.bookmarks.filter(function(item){
+        if(!item)return true;
+        var r=replacements.find(function(x){return norm(item.name)===norm(x.name)});
+        if(!r)return true;
+        var key=norm(r.name);
+        if(seen[key]){changed=true;return false}
+        seen[key]=true;return true;
       });
       if(changed)localStorage.setItem('onepilot_v3',JSON.stringify(state));
       return changed;
     }catch(e){return false}
   }
+  function cardUrl(card){return card.dataset.url||card.getAttribute('data-url')||''}
+  function isCourseCard(card){return [].slice.call(card.children).some(function(el){return !el.children.length&&/^course$/i.test((el.textContent||'').trim())})}
   function updateVisibleCards(){
     var active=document.querySelector('#tabsContainer .tab-item.active');
     if(active&&norm(active.textContent).indexOf('daily')!==0)return false;
     var grid=document.getElementById('bookmarksGrid');if(!grid)return false;
-    var found=0;
     Array.prototype.forEach.call(grid.querySelectorAll('.bookmark-card'),function(card){
+      if(isCourseCard(card))return;
       var nameEl=card.querySelector('.bookmark-name');
       var current=norm(nameEl?nameEl.textContent:card.textContent);
-      var r=replacements.find(function(x){return current===norm(x.old)});
+      var url=cardUrl(card);
+      var r=replacements.find(function(x){return current===norm(x.old)||current===norm(x.name)});
       if(!r)return;
-      found++;
-      if(nameEl)nameEl.textContent=r.name;
-      card.setAttribute('aria-label',r.name);
-      card.dataset.url=r.url;card.setAttribute('data-url',r.url);
-      card.querySelectorAll('a[href]').forEach(function(a){a.href=r.url});
+      if(nameEl&&nameEl.textContent!==r.name)nameEl.textContent=r.name;
+      if(card.getAttribute('aria-label')!==r.name)card.setAttribute('aria-label',r.name);
+      if(card.dataset.url!==r.url)card.dataset.url=r.url;if(card.getAttribute('data-url')!==r.url)card.setAttribute('data-url',r.url);
+      card.querySelectorAll('a[href]').forEach(function(a){if(a.getAttribute('href')!==r.url)a.setAttribute('href',r.url)});
       var box=card.querySelector('.bookmark-icon');
-      if(box){var img=box.querySelector('img');if(!img){img=document.createElement('img');box.replaceChildren(img)}img.src=r.icon;img.alt=r.name;img.loading='lazy'}
+      if(box){var img=box.querySelector('img');if(!img){img=document.createElement('img');box.replaceChildren(img)}if(img.getAttribute('src')!==r.icon)img.setAttribute('src',r.icon);if(img.alt!==r.name)img.alt=r.name;if(img.loading!=='lazy')img.loading='lazy'}
       if(!card.dataset.dailyReplacementBound){
         card.dataset.dailyReplacementBound='1';
         card.addEventListener('click',function(e){e.preventDefault();e.stopImmediatePropagation();window.location.href=r.url},true);
       }
     });
-    return found===replacements.length;
+    var seen={};
+    Array.prototype.forEach.call(grid.querySelectorAll('.bookmark-card'),function(card){
+      if(isCourseCard(card))return;
+      var nameEl=card.querySelector('.bookmark-name');var name=norm(nameEl?nameEl.textContent:card.textContent);var url=canonical(cardUrl(card));
+      var r=replacements.find(function(x){return name===norm(x.name)});
+      if(!r)return;
+      var key=norm(r.name);
+      if(seen[key])card.remove();else seen[key]=card;
+    });
+    return true;
   }
   function apply(){updateSavedData();updateVisibleCards()}
   apply();
@@ -1391,12 +1413,34 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
    {kind:'external',source:'Bookmark',category:'Daily',name:'Google Translator',url:'https://translate.google.com/?sl=ur&tl=en&op=translate',icon:'https://cdn-icons-png.flaticon.com/128/281/281759.png'},
    {kind:'external',source:'Bookmark',category:'Daily',name:'Pinterest',url:'https://www.pinterest.com/',icon:'https://cdn-icons-png.flaticon.com/128/145/145808.png'}
   ].filter(function(item){return norm(item.name+' '+item.url).includes(nq)});
-  quickLinks.forEach(function(item){var i=local.findIndex(function(x){return norm(x.name)===norm(item.name)});if(i>=0)local[i]=item;else local.push(item)});
+  quickLinks.forEach(function(item){var i=local.findIndex(function(x){return !x.isCourse&&norm(x.name)===norm(item.name)});if(i>=0)local[i]=item;else local.push(item);local=local.filter(function(x){return x===item||x.isCourse||norm(x.name)!==norm(item.name)})});
+  try{
+   var st=JSON.parse(localStorage.getItem('onepilot_v3')||'{}');
+   (st.tabs||[]).forEach(function(t){(t.bookmarks||[]).forEach(function(b){
+    if(!b||!b.courseUrl)return;var nm=String(b.name||'').trim();if(!nm)return;
+    if(!norm(nm+' '+(b.url||'')).includes(nq))return;
+    if(local.some(function(x){return x.isCourse&&norm(x.name)===norm(nm)}))return;
+    local.push({kind:'bookmark',source:'Bookmark',category:'Free Courses',isCourse:true,name:nm,url:b.url||'',icon:b.icon||'',tabId:t.id})
+   })})
+  }catch(e){}
   return local;
  }
  function decodePage(b64){var bin=atob(b64),bytes=new Uint8Array(bin.length);for(var i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);return new TextDecoder().decode(bytes)}
  function openPage(item,q){
   if(item.kind==='external'&&item.url){var panel=document.getElementById('skCrossSearchResults');if(panel)panel.classList.remove('sk-open');window.location.href=item.url;return}
+  if(item.kind==='bookmark'&&item.isCourse&&!item.card){
+   var pnl=document.getElementById('skCrossSearchResults');if(pnl)pnl.classList.remove('sk-open');
+   var tabsEl=document.getElementById('tabsContainer');var tabEl=tabsEl&&[].slice.call(tabsEl.querySelectorAll('.tab-item')).find(function(t){return String(t.dataset.tabid)===String(item.tabId)});
+   if(tabEl){
+    tabEl.click();var tries=0;
+    (function findCard(){
+     var g=document.getElementById('bookmarksGrid');var found=g&&[].slice.call(g.querySelectorAll('.bookmark-card')).find(function(c){var n=c.querySelector('.bookmark-name');return n&&norm(n.textContent)===norm(item.name)&&[].slice.call(c.children).some(function(el){return !el.children.length&&/^course$/i.test((el.textContent||'').trim())})});
+     if(found){g.style.display='';found.click();return}
+     if(++tries<15)setTimeout(findCard,120);
+    })();
+   }
+   return;
+  }
   if(item.kind==='bookmark'&&item.card){var grid=document.getElementById('bookmarksGrid');if(grid)grid.style.display='';var panel=document.getElementById('skCrossSearchResults');if(panel)panel.classList.remove('sk-open');item.card.click();return}
   var modal=document.getElementById('skCrossViewer');
   if(!modal){modal=document.createElement('div');modal.id='skCrossViewer';modal.innerHTML='<div class="sk-cv-box"><div class="sk-cv-head"><div class="sk-cv-title"></div><button type="button" class="sk-cv-close" aria-label="Close">×</button></div><iframe class="sk-cv-frame" title="Search result" loading="eager"></iframe></div>';document.body.appendChild(modal);modal.querySelector('.sk-cv-close').addEventListener('click',function(){modal.classList.remove('sk-open')});modal.addEventListener('click',function(e){if(e.target===modal)modal.classList.remove('sk-open')})}
@@ -1497,3 +1541,38 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
 #skToolboxSubcategories .sk-toolbox-category.active{background:#4f46e5;border-color:#4f46e5;color:#fff}
 </style>
 
+<script id="lockedCardsBlockTabRenamePassword">
+(function(){
+  'use strict';
+  var notice='Is tab mein locked cards hain. Pehle cards unlock karein; phir tab rename ya password/lock set karein.';
+  function hasLockedCards(){
+    if(document.querySelector('#bookmarksGrid .bookmark-card.bm-locked, #bookmarksGrid .bookmark-card.sk-pass-locked, #bookmarksGrid .bookmark-card.locked, #bookmarksGrid .bookmark-card[data-locked="true"]'))return true;
+    try{
+      var data=JSON.parse(localStorage.getItem('sastakaam_multi_password_v2')||'{}');
+      return !!(data.locks&&Object.keys(data.locks).some(function(k){return !!data.locks[k]}));
+    }catch(e){return false}
+  }
+  function labelOf(node){
+    return [node.textContent,node.getAttribute('title'),node.getAttribute('aria-label'),node.getAttribute('data-action'),node.getAttribute('data-menu-action')].filter(Boolean).join(' ').toLowerCase();
+  }
+  function stop(e){e.preventDefault();e.stopImmediatePropagation();e.stopPropagation();alert(notice)}
+  function menuClick(e){
+    var target=e.target;if(!target||!target.closest||!hasLockedCards())return;
+    var menu=target.closest('#tabContextMenu');if(!menu)return;
+    var item=target.closest('button,[role="menuitem"],.tab-menu-item,.context-menu-item')||target;
+    var text=labelOf(item)+' '+labelOf(target);
+    if(/\b(unlock|remove password|clear password)\b/.test(text))return;
+    if(/\b(rename|change|edit|name|password|passcode|protect|secure|lock)\b/.test(text))stop(e);
+  }
+  function tabDoubleClick(e){
+    var target=e.target;if(target&&target.closest&&target.closest('#tabsContainer .tab-item')&&hasLockedCards())stop(e);
+  }
+  window.addEventListener('click',menuClick,true);
+  window.addEventListener('dblclick',tabDoubleClick,true);
+  var nativePrompt=window.prompt;
+  window.prompt=function(message){
+    if(hasLockedCards()&&/\b(tab|rename|name)\b/i.test(String(message||''))){alert(notice);return null}
+    return nativePrompt.apply(this,arguments);
+  };
+})();
+</script>
