@@ -2,55 +2,97 @@
   <html lang="en">
   <head>
 <script id="sastaRemovedDefaultsGuard">
-/* Delete kiye hue cards refresh par wapas na aayein: app ka "default cards wapas jodo" step block hota hai. */
+/* Deleted cards/tabs refresh par default data se dobara na aayen. */
 (function(){
  'use strict';
- var REG_KEY='sastakaam_removed_defaults_v1', TRASH_KEY='sastakaam_trash_bin_v1';
- var realPush=Array.prototype.push, realSet=Storage.prototype.setItem;
+ var REG_KEY='sastakaam_removed_defaults_v1',TAB_REG_KEY='sastakaam_removed_default_tabs_v1',TRASH_KEY='sastakaam_trash_bin_v1',DATA_KEY='onepilot_v3';
+ var realPush=Array.prototype.push,realSet=Storage.prototype.setItem;
  function nk(s){return String(s||'').trim().toLowerCase()}
  function uk(s){return nk(s).replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/+$/,'')}
+ function tabName(s){return nk(s).replace(/\s+/g,' ')}
+ function protectedTabName(s){s=tabName(s);return s==='ai lab'||s==='work & earn'}
+ function entryOf(name,url){return {n:nk(name),u:uk(url)}}
  function loadReg(){try{var r=JSON.parse(localStorage.getItem(REG_KEY)||'[]');return Array.isArray(r)?r:[]}catch(e){return[]}}
  function saveReg(r){try{realSet.call(localStorage,REG_KEY,JSON.stringify(r))}catch(e){}}
- function entryOf(name,url){return {n:nk(name),u:uk(url)}}
+ function loadTabReg(){try{var r=JSON.parse(localStorage.getItem(TAB_REG_KEY)||'[]');return Array.isArray(r)?r:[]}catch(e){return[]}}
+ function saveTabReg(r){try{realSet.call(localStorage,TAB_REG_KEY,JSON.stringify(r))}catch(e){}}
+ function tabId(t){return t&&String(t.id||t.tabId||'')}
+ function tabRemoved(t,reg){if(!t)return false;var id=tabId(t),name=tabName(t.name);return reg.some(function(x){return (id&&x.id&&id===x.id)||(name&&x.n&&name===x.n)})}
+ function filterStoredState(){
+  try{var v=localStorage.getItem(DATA_KEY);if(!v)return;var state=JSON.parse(v),reg=loadTabReg();if(!state||!Array.isArray(state.tabs)||!reg.length)return;
+   var before=state.tabs.length;state.tabs=state.tabs.filter(function(t){return !tabRemoved(t,reg)});
+   if(state.tabs.length!==before)realSet.call(localStorage,DATA_KEY,JSON.stringify(state));
+  }catch(e){}
+ }
  function addToReg(list){
   var reg=loadReg(),changed=false;
+  list.forEach(function(it){if(!it)return;var b=it.bookmark||{};[[it.name,it.url],[b.name,b.url]].forEach(function(p){if(!p[0]&&!p[1])return;var e=entryOf(p[0],p[1]);if(!reg.some(function(x){return x.n===e.n&&x.u===e.u})){reg.push(e);changed=true}})});
+  if(changed)saveReg(reg);
+ }
+ function recordTabDeletes(oldState,nextState){
+  if(!oldState||!nextState||!Array.isArray(oldState.tabs)||!Array.isArray(nextState.tabs))return;
+  var reg=loadTabReg(),changed=false;
+  oldState.tabs.forEach(function(oldTab){
+   if(!oldTab||!protectedTabName(oldTab.name))return;
+   var id=tabId(oldTab),name=tabName(oldTab.name);
+   var stillPresent=nextState.tabs.some(function(t){return t&&((id&&tabId(t)===id)||tabName(t.name)===name)});
+   if(!stillPresent&&!reg.some(function(x){return (id&&x.id===id)||x.n===name})){
+    reg.push({id:id,n:name});changed=true;
+   }
+  });
+  /* Sirf Add Tab button se naya same-named tab banane par tombstone clear karein;
+     app ke automatic default restore ko manual choice na samjhein. */
+  if(Date.now()<userAddUntil){
+   nextState.tabs.forEach(function(t){if(!t||!protectedTabName(t.name))return;var name=tabName(t.name);var existed=oldState.tabs.some(function(o){return o&&tabName(o.name)===name});if(!existed){var n=reg.length;reg=reg.filter(function(x){return x.n!==name});if(reg.length!==n)changed=true;}});
+  }
+  if(changed)saveTabReg(reg);
+ }
+ function addTabsToReg(list){
+  var reg=loadReg(),changed=false;
   list.forEach(function(it){
-   if(!it)return;
-   var b=it.bookmark||{};
-   [[it.name,it.url],[b.name,b.url]].forEach(function(p){
-    if(!p[0]&&!p[1])return;
-    var e=entryOf(p[0],p[1]);
-    if(!reg.some(function(x){return x.n===e.n&&x.u===e.u})){reg.push(e);changed=true}
-   });
+   if(!it)return;var b=it.bookmark||{};
+   [[it.name,it.url],[b.name,b.url]].forEach(function(p){if(!p[0]&&!p[1])return;var e=entryOf(p[0],p[1]);if(!reg.some(function(x){return x.n===e.n&&x.u===e.u})){reg.push(e);changed=true}});
   });
   if(changed)saveReg(reg);
  }
- /* jab bhi Trash save ho, un cards ko "user ne delete kiye" list me daal do */
  Storage.prototype.setItem=function(k,v){
   if(this===window.localStorage&&k===TRASH_KEY){try{var arr=JSON.parse(v);if(Array.isArray(arr))addToReg(arr)}catch(e){}}
-  return realSet.apply(this,arguments);
- };
- /* sirf page load ke waqt (jab tak user ne kuch click na kiya) removed cards ka push block */
- var armed=true,reg0=loadReg();
- function isRemoved(o){
-  if(!reg0.length)return false;
-  var n=nk(o.name),u=uk(o.url);
-  return reg0.some(function(x){return (x.n&&x.n===n)||(x.u&&x.u===u)});
- }
- Array.prototype.push=function(){
-  if(armed&&arguments.length===1){
-   var a=arguments[0];
-   if(a&&typeof a==='object'&&typeof a.name==='string'&&typeof a.url==='string'&&isRemoved(a))return this.length;
+  if(this===window.localStorage&&k===DATA_KEY){
+   try{
+    var oldState=JSON.parse(localStorage.getItem(DATA_KEY)||'null'),nextState=JSON.parse(v);
+    recordTabDeletes(oldState,nextState);
+    if(nextState&&Array.isArray(nextState.tabs)){
+     var tabReg=loadTabReg();nextState.tabs=nextState.tabs.filter(function(t){return !tabRemoved(t,tabReg)});v=JSON.stringify(nextState);
+    }
+   }catch(e){}
   }
+  return realSet.apply(this,arguments.length>1&&k===DATA_KEY?[k,v]:arguments);
+ };
+ /* Block default tab/card pushes only during page initialization. */
+ var userAddUntil=0;document.addEventListener('click',function(e){if(e.target&&e.target.closest&&e.target.closest('#tabsContainer .add-tab-btn'))userAddUntil=Date.now()+15000},true);
+ var armed=true,reg0=loadReg(),tabReg0=loadTabReg();
+ function isRemoved(o){if(!reg0.length)return false;var n=nk(o.name),u=uk(o.url);return reg0.some(function(x){return (x.n&&x.n===n)||(x.u&&x.u===u)})}
+ function isRemovedTab(o){return Array.isArray(o&&o.bookmarks)&&tabRemoved(o,tabReg0)}
+ Array.prototype.push=function(){
+  if(armed&&arguments.length===1){var a=arguments[0];if(a&&typeof a==='object'&&isRemovedTab(a))return this.length;if(a&&typeof a==='object'&&typeof a.name==='string'&&typeof a.url==='string'&&isRemoved(a))return this.length}
   return realPush.apply(this,arguments);
  };
- function disarm(){if(!armed)return;armed=false;Array.prototype.push=realPush;
-  ['pointerdown','keydown','touchstart','contextmenu','change'].forEach(function(t){document.removeEventListener(t,disarm,true)})}
+ function scrubTabDom(){
+  var root=document.getElementById('tabsContainer'),reg=loadTabReg();if(!root||!reg.length)return;
+  var removed=[];
+  root.querySelectorAll('.tab-item').forEach(function(el){
+   var id=String(el.dataset.tabid||''),txt=(el.textContent||'').trim(),base=txt.replace(/\s*(?:\(\s*\d+\s*\)|\[\s*\d+\s*\]|·\s*\d+|\d+)\s*$/,'').trim();
+   if(reg.some(function(x){return (id&&x.id&&id===x.id)||tabName(base)===x.n})){removed.push(el);el.remove()}
+  });
+  if(removed.length)filterStoredState();
+ }
+ function startTabScrub(){scrubTabDom();var root=document.getElementById('tabsContainer');if(root)new MutationObserver(scrubTabDom).observe(root,{childList:true,subtree:true});[100,350,900,1800,3500].forEach(function(ms){setTimeout(scrubTabDom,ms)})}
+ function disarm(){if(!armed)return;armed=false;Array.prototype.push=realPush;['pointerdown','keydown','touchstart','contextmenu','change'].forEach(function(t){document.removeEventListener(t,disarm,true)})}
  ['pointerdown','keydown','touchstart','contextmenu','change'].forEach(function(t){document.addEventListener(t,disarm,true)});
  setTimeout(disarm,8000);
- window.__skFresh=(localStorage.getItem('onepilot_v3')===null);
- window.__skRealPush=realPush;
- window.__skReg={key:REG_KEY,load:loadReg,save:saveReg,nk:nk,uk:uk};
+ if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',startTabScrub,{once:true});else startTabScrub();
+ filterStoredState();
+ window.__skFresh=(localStorage.getItem(DATA_KEY)===null);window.__skRealPush=realPush;window.__skReg={key:REG_KEY,load:loadReg,save:saveReg,nk:nk,uk:uk};
 })();
 </script>
 
