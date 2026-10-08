@@ -1539,6 +1539,8 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
   if(section)section.style.display='';if(nav)nav.style.display='none';var nq=norm(q);var local=collectLocal(q).sort(function(a,b){return (b.isCourse?1:0)-(a.isCourse?1:0)});if(original)original.style.display='none';
   var courseHits=local.filter(function(x){return x.isCourse&&norm(x.name).includes(nq)});var hasWebsiteShortcut=local.some(function(x){return x.kind==='external'&&norm(x.name+' '+x.url).includes(nq)});if(courseHits.length&&!hasWebsiteShortcut){renderCards(courseHits,q,false);return}var remote=INDEX.filter(function(x){return norm(x.name+' '+describe(x)).includes(nq)});var results=local.concat(remote),pinResults=results.filter(function(x){return norm(x.name)==='pinterest'});if(pinResults.length>1){pinResults.sort(function(a,b){function rank(x){return x.kind==='external'?0:(describe(x)==='Course'?1:2)}return rank(a)-rank(b)});var firstPin=results.findIndex(function(x){return norm(x.name)==='pinterest'});results=results.filter(function(x){return norm(x.name)!=='pinterest'});results.splice.apply(results,[firstPin,0].concat(pinResults))}renderCards(results,q,false);
  }
+ window.__skRefreshCrossSearch=render;
+
  function ensureToolboxTab(){
   var tabs=document.getElementById('tabsContainer');if(!tabs)return null;var tool=tabs.querySelector('[data-sk-toolbox-tab="1"]');var sw=tabs.querySelector('[data-sk-software-tab="1"]');var add=tabs.querySelector('.add-tab-btn');
   if(!tool){tool=document.createElement('div');tool.className='tab-item sk-toolbox-top-tab';tool.dataset.skToolboxTab='1';tool.dataset.tabid='__sk_toolbox__';tool.setAttribute('role','tab');tool.setAttribute('aria-label','Toolbox');tool.innerHTML='Toolbox<small class="sk-toolbox-top-count">'+INDEX.filter(function(x){return x.source==='Toolbox'}).length+'</small>';var free=[].slice.call(tabs.querySelectorAll('.tab-item')).find(function(x){return (x.textContent||'').trim().indexOf('Free Courses')===0});if(free&&free.parentNode===tabs)tabs.insertBefore(tool,free.nextSibling);else if(add)tabs.insertBefore(tool,add);else tabs.appendChild(tool)}
@@ -2018,6 +2020,59 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
     observer.observe(area,{childList:true,subtree:true});
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',watch);else watch();
+})();
+</script>
+
+<!-- Keep active search results in sync immediately after bookmark edits/deletes. -->
+<script id="skSearchBookmarkLiveRefreshFix">
+(function(){
+  'use strict';
+  var input=document.getElementById('searchInput');
+  var grid=document.getElementById('bookmarksGrid');
+  if(!input||!grid)return;
+  var timer=0,lastSignature=signature();
+  function signature(){
+    return JSON.stringify([].slice.call(grid.querySelectorAll('.bookmark-card')).map(function(card){
+      var name=card.querySelector('.bookmark-name');
+      var link=card.querySelector('a[href]');
+      var image=card.querySelector('.bookmark-icon img');
+      return [name?(name.textContent||'').trim():'',card.dataset.url||card.getAttribute('data-url')||(link&&link.href)||'',image?(image.currentSrc||image.src||image.getAttribute('src')||''):''];
+    }));
+  }
+  function scheduleRefresh(fromSave){
+    if(!input.value.trim())return;
+    clearTimeout(timer);
+    timer=setTimeout(function(){
+      if(!input.isConnected||!input.value.trim())return;
+      if(fromSave){
+        /* Let the base app finish saving/rebuilding its bookmark DOM once. */
+        input.dispatchEvent(new Event('input',{bubbles:true}));
+        return;
+      }
+      var next=signature();
+      if(next===lastSignature)return;
+      lastSignature=next;
+      if(typeof window.__skRefreshCrossSearch==='function')window.__skRefreshCrossSearch();
+    },100);
+  }
+  /* Rename, URL/icon edit, and removal are detected; unrelated checkbox changes are ignored. */
+  new MutationObserver(function(){scheduleRefresh(false)}).observe(grid,{childList:true,subtree:true,characterData:true});
+  /* A saved bookmark triggers one app refresh, then the observer syncs the result cards. */
+  try{
+    var proto=Storage.prototype;
+    if(!proto.__skSearchBookmarkRefreshWrapped){
+      var original=proto.setItem;
+      var wrapped=function(key,value){
+        var result=original.apply(this,arguments);
+        if(this===window.localStorage&&String(key)==='onepilot_v3')
+          window.dispatchEvent(new CustomEvent('sk:bookmark-data-saved'));
+        return result;
+      };
+      Object.defineProperty(proto,'__skSearchBookmarkRefreshWrapped',{value:true});
+      proto.setItem=wrapped;
+    }
+    window.addEventListener('sk:bookmark-data-saved',function(){scheduleRefresh(true)});
+  }catch(e){}
 })();
 </script>
 
