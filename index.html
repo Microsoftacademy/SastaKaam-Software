@@ -48,6 +48,7 @@
   ['pointerdown','keydown','touchstart','contextmenu','change'].forEach(function(t){document.removeEventListener(t,disarm,true)})}
  ['pointerdown','keydown','touchstart','contextmenu','change'].forEach(function(t){document.addEventListener(t,disarm,true)});
  setTimeout(disarm,8000);
+ window.__skFresh=(localStorage.getItem('onepilot_v3')===null);
  window.__skRealPush=realPush;
  window.__skReg={key:REG_KEY,load:loadReg,save:saveReg,nk:nk,uk:uk};
 })();
@@ -1739,5 +1740,154 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
    }else if(tries>40){clearInterval(timer)} /* user ne cancel kar diya ya card locked tha */
   },150);
  },true);
+
+ /* ---- Select karke Delete (bulk): card sirf chhupta tha. Ab asli delete hota hai, phir page refresh ho jata hai ---- */
+ document.addEventListener('click',function(e){
+  var bb=e.target.closest&&e.target.closest('#skDeleteSelected');
+  if(!bb||bb.disabled)return;
+  var cards=[].slice.call(document.querySelectorAll('#bookmarksGrid .bookmark-card')).filter(function(c){var x=c.querySelector('.sk-multi-check');return x&&x.checked});
+  if(!cards.length)return;
+  var a=active(),snaps=cards.map(function(c){return {el:c,name:nameOf(c),url:urlOf(c),skKey:c.dataset.skKey||''}});
+  setTimeout(function(){
+   /* agar user ne confirm cancel kiya to cards abhi bhi screen par hain */
+   if(!snaps.every(function(s){return !s.el.isConnected}))return;
+   try{
+    var st=JSON.parse(localStorage.getItem('onepilot_v3')||'{}'),tabs=st.tabs||[];
+    function same(b,s){return b&&((s.url&&b.url===s.url)||(s.url&&norm(b.url)===norm(s.url))||(!s.url&&b.name===s.name))&&b.name===s.name}
+    function norm(u){return String(u||'').trim().toLowerCase().replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/+$/,'')}
+    snaps.forEach(function(s){
+     var order=[];tabs.forEach(function(t){if(t.id===a.tabId)order.unshift(t);else order.push(t)});
+     for(var i=0;i<order.length;i++){
+      var arr=order[i].bookmarks||[],k=arr.findIndex(function(b){return same(b,s)});
+      if(k>-1){arr.splice(k,1);break}
+     }
+    });
+    localStorage.setItem('onepilot_v3',JSON.stringify(st));
+    var sec=JSON.parse(localStorage.getItem('sastakaam_multi_password_v2')||'{}');
+    if(sec.deleted){snaps.forEach(function(s){if(s.skKey)delete sec.deleted[s.skKey]});localStorage.setItem('sastakaam_multi_password_v2',JSON.stringify(sec))}
+   }catch(err){console.error(err)}
+   location.reload();
+  },350);
+ },true);
+})();
+</script>
+
+<script id="sastaAutoBackupPatch">
+/* Backup Reminder (din me ek baar, kone me) + optional Silent Auto Backup. */
+(function(){
+ 'use strict';
+ var KEY='sastakaam_autobackup_v1', FP_KEY='sastakaam_default_fp_v1', SNOOZE_MS=4*3600*1000, auto=false;
+ function pad(n){return n<10?'0'+n:''+n}
+ function dayStr(d){d=d||new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
+ function load(){var s={on:true,silent:false,last:null,lastDate:'',snoozeUntil:0};try{var x=JSON.parse(localStorage.getItem(KEY)||'{}');for(var k in x)s[k]=x[k]}catch(e){}return s}
+ function save(s){try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}}
+ function timeStr(d){return d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}
+ function fmt(iso){
+  if(!iso)return 'Abhi tak nahi hua';
+  var d=new Date(iso),n=new Date(),y=new Date(n.getTime()-864e5),t=timeStr(d);
+  if(dayStr(d)===dayStr(n))return 'Aaj '+t;
+  if(dayStr(d)===dayStr(y))return 'Kal '+t;
+  return d.toLocaleDateString()+' '+t;
+ }
+ /* ---- styles ---- */
+ var st=document.createElement('style');
+ st.textContent=
+ '.skn-item.sab-item{box-sizing:border-box;position:relative!important;cursor:pointer;display:flex;align-items:center;gap:10px;width:100%;text-align:left}'+
+ '.skn-item.sab-item .skn-lb{min-width:0;flex:1 1 auto;overflow:hidden;white-space:nowrap}.sab-item .sab-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;font-size:.68rem;opacity:.7;font-weight:400;line-height:1.2;margin-top:1px}'+
+ '.sab-item .sab-sw{margin-left:auto;width:34px;height:18px;flex:0 0 34px;border-radius:999px;background:#cbd5e1;position:relative;transition:.2s}'+
+ '.sab-item .sab-sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.2s}'+
+ '.sab-item.on .sab-sw{background:#22c55e}.sab-item.on .sab-sw::after{left:18px}'+
+ 'body.skn-collapsed .sab-item .sab-sw{display:none}'+
+ 'body.skn-collapsed .skn-item.sab-item.on::after{content:"";position:absolute;top:6px;right:4px;width:9px;height:9px;border-radius:50%;background:#22c55e;border:2px solid #fff}'+
+ '.sab-card{position:fixed;right:18px;bottom:18px;width:min(440px,calc(100vw - 24px));box-sizing:border-box;border-radius:14px;padding:16px 18px;z-index:2147483000;font-family:system-ui,Segoe UI,Arial,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.2);opacity:0;transform:translateY(12px);transition:opacity .25s,transform .25s}'+
+ '.sab-card.show{opacity:1;transform:none}'+
+ '.sab-card h4{margin:0 0 8px;font-size:15px;font-weight:800}.sab-card p{margin:0;font-size:13.5px;line-height:1.45}'+
+ '.sab-rem{background:#fffbea;border:1px solid #fbbf24;color:#7c2d12}.sab-rem h4{color:#7c2d12}'+
+ '.sab-ok{background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46}.sab-ok h4{color:#064e3b}'+
+ '.sab-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}'+
+ '.sab-btns button{border:0;border-radius:10px;padding:9px 16px;font-size:13.5px;font-weight:700;cursor:pointer}'+
+ '.sab-later{background:#e5e7eb;color:#374151}.sab-now{background:#4f46e5;color:#fff}';
+ document.head.appendChild(st);
+ /* ---- chhote messages ---- */
+ var okTimer=null;
+ function removeCard(id){var c=document.getElementById(id);if(c){c.classList.remove('show');setTimeout(function(){c.remove()},300)}}
+ function mkCard(id,cls,html){
+  removeCard(id);
+  var c=document.createElement('div');c.id=id;c.className='sab-card '+cls;c.innerHTML=html;document.body.appendChild(c);
+  requestAnimationFrame(function(){requestAnimationFrame(function(){c.classList.add('show')})});return c;
+ }
+ function showOk(title){
+  removeCard('sabRemind');
+  mkCard('sabOk','sab-ok','<h4>'+title+'</h4><p>Backup ho gaya. Downloads folder me file check kar lein.</p>');
+  clearTimeout(okTimer);okTimer=setTimeout(function(){removeCard('sabOk')},7000);
+ }
+ /* ---- backup record ---- */
+ function markDone(){var s=load();s.last=new Date().toISOString();s.lastDate=dayStr();save(s);paint()}
+ /* ---- sidebar items ---- */
+ function paint(){
+  var s=load(),last=fmt(s.last);
+  var r=document.getElementById('sknBackupRemind'),a=document.getElementById('sknAutoBackup');
+  if(r){r.classList.toggle('on',!!s.on);r.querySelector('.sab-sub').textContent=s.on?('Last: '+(s.last?last:'Nahi hua')):'Band hai'}
+  if(a){a.classList.toggle('on',!!s.silent);a.querySelector('.sab-sub').textContent=s.silent?'Bina poochhe':'Band hai'}
+ }
+ function mkItem(id,label,title,prop,onMsg,offMsg){
+  var b=document.createElement('button');b.type='button';b.id=id;b.className='skn-item sab-item';
+  b.innerHTML='<span class="skn-ic"><img class="skn-img" src="https://cdn-icons-png.flaticon.com/128/10772/10772424.png" alt=""></span><span class="skn-lb">'+label+'<span class="sab-sub"></span></span><span class="sab-sw"></span>';
+  b.addEventListener('click',function(){var s=load();s[prop]=!s[prop];save(s);paint();
+   var m=s[prop]?onMsg:offMsg;mkCard('sabOk','sab-ok','<h4>'+title+'</h4><p>'+m+'</p>');clearTimeout(okTimer);okTimer=setTimeout(function(){removeCard('sabOk')},4000)});
+  return b;
+ }
+ function mount(){
+  var rs=document.getElementById('restoreBtn');
+  if(!rs||!rs.parentNode||rs.parentNode.id!=='sknScroll'||document.getElementById('sknBackupRemind'))return false;
+  var r=mkItem('sknBackupRemind','Reminder','Backup Reminder','on','ON: roz ek baar backup yaad dilaya jayega.','Reminder band kar diya.');
+  var a=mkItem('sknAutoBackup','Auto Backup','Silent Auto Backup','silent','ON: roz ek baar backup bina poochhe download hoga.','Silent Auto Backup band kar diya.');
+  rs.parentNode.insertBefore(r,rs.nextSibling);rs.parentNode.insertBefore(a,r.nextSibling);
+  paint();return true;
+ }
+ var tries=0,mt=setInterval(function(){tries++;if(mount()||tries>60)clearInterval(mt)},300);
+ /* ---- koi bhi backup (button se) -> "aaj ka backup" ---- */
+ document.addEventListener('click',function(e){
+  var t=e.target.closest&&e.target.closest('#backupBtn');
+  if(t&&!auto){markDone();showOk('Aaj ka backup: '+timeStr(new Date()))}
+ },true);
+ /* ---- naya dashboard (kuch badla nahi) ka backup/reminder nahi ---- */
+ function fingerprint(){
+  try{var s=JSON.parse(localStorage.getItem('onepilot_v3')||'{}');
+   return (s.tabs||[]).map(function(t){return t.name+':'+(t.bookmarks||[]).map(function(b){return b.name+'|'+b.url}).sort().join(';')}).sort().join('#');
+  }catch(e){return ''}
+ }
+ function untouched(){
+  var fp=fingerprint(),saved=localStorage.getItem(FP_KEY);
+  if(saved===null&&window.__skFresh){try{localStorage.setItem(FP_KEY,fp)}catch(e){}return true}
+  return saved!==null&&saved===fp;
+ }
+ function busy(){return !!document.querySelector('.show-context-menu')}
+ /* ---- silent backup ---- */
+ function silentRun(){
+  var btn=document.getElementById('backupBtn');if(!btn)return;
+  var name='Auto-Backup-'+dayStr()+'.json',proto=HTMLAnchorElement.prototype,orig=proto.click;
+  proto.click=function(){try{if(this.download)this.download=name}catch(e){}proto.click=orig;return orig.apply(this,arguments)};
+  setTimeout(function(){if(proto.click!==orig)proto.click=orig},2000);
+  auto=true;
+  try{btn.dispatchEvent(new MouseEvent('click',{bubbles:false,cancelable:true,view:window}))}finally{auto=false}
+  markDone();showOk('Auto Backup: '+timeStr(new Date()));
+ }
+ /* ---- reminder ---- */
+ function showReminder(){
+  if(document.getElementById('sabRemind'))return;
+  var c=mkCard('sabRemind','sab-rem','<h4>Aaj ka backup lazmi lein</h4><p>Aaj ka backup abhi nahi hua. Apna data safe rakhne ke liye Backup button dabayein.</p><div class="sab-btns"><button type="button" class="sab-later">Baad mein</button><button type="button" class="sab-now">Backup Now</button></div>');
+  c.querySelector('.sab-later').onclick=function(){var s=load();s.snoozeUntil=Date.now()+SNOOZE_MS;save(s);removeCard('sabRemind')};
+  c.querySelector('.sab-now').onclick=function(){removeCard('sabRemind');var b=document.getElementById('backupBtn');if(b)b.click()};
+ }
+ function check(){
+  var s=load();
+  if(s.lastDate===dayStr()||untouched())return;
+  if(busy()){setTimeout(check,10000);return}
+  if(s.silent){silentRun();return}
+  if(s.on&&Date.now()>(s.snoozeUntil||0))showReminder();
+ }
+ setTimeout(check,4000);
+ setInterval(check,30*60*1000);
 })();
 </script>
