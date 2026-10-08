@@ -1,6 +1,59 @@
 <!DOCTYPE html>
   <html lang="en">
   <head>
+<script id="sastaRemovedDefaultsGuard">
+/* Delete kiye hue cards refresh par wapas na aayein: app ka "default cards wapas jodo" step block hota hai. */
+(function(){
+ 'use strict';
+ var REG_KEY='sastakaam_removed_defaults_v1', TRASH_KEY='sastakaam_trash_bin_v1';
+ var realPush=Array.prototype.push, realSet=Storage.prototype.setItem;
+ function nk(s){return String(s||'').trim().toLowerCase()}
+ function uk(s){return nk(s).replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/+$/,'')}
+ function loadReg(){try{var r=JSON.parse(localStorage.getItem(REG_KEY)||'[]');return Array.isArray(r)?r:[]}catch(e){return[]}}
+ function saveReg(r){try{realSet.call(localStorage,REG_KEY,JSON.stringify(r))}catch(e){}}
+ function entryOf(name,url){return {n:nk(name),u:uk(url)}}
+ function addToReg(list){
+  var reg=loadReg(),changed=false;
+  list.forEach(function(it){
+   if(!it)return;
+   var b=it.bookmark||{};
+   [[it.name,it.url],[b.name,b.url]].forEach(function(p){
+    if(!p[0]&&!p[1])return;
+    var e=entryOf(p[0],p[1]);
+    if(!reg.some(function(x){return x.n===e.n&&x.u===e.u})){reg.push(e);changed=true}
+   });
+  });
+  if(changed)saveReg(reg);
+ }
+ /* jab bhi Trash save ho, un cards ko "user ne delete kiye" list me daal do */
+ Storage.prototype.setItem=function(k,v){
+  if(this===window.localStorage&&k===TRASH_KEY){try{var arr=JSON.parse(v);if(Array.isArray(arr))addToReg(arr)}catch(e){}}
+  return realSet.apply(this,arguments);
+ };
+ /* sirf page load ke waqt (jab tak user ne kuch click na kiya) removed cards ka push block */
+ var armed=true,reg0=loadReg();
+ function isRemoved(o){
+  if(!reg0.length)return false;
+  var n=nk(o.name),u=uk(o.url);
+  return reg0.some(function(x){return (x.n&&x.n===n)||(x.u&&x.u===u)});
+ }
+ Array.prototype.push=function(){
+  if(armed&&arguments.length===1){
+   var a=arguments[0];
+   if(a&&typeof a==='object'&&typeof a.name==='string'&&typeof a.url==='string'&&isRemoved(a))return this.length;
+  }
+  return realPush.apply(this,arguments);
+ };
+ function disarm(){if(!armed)return;armed=false;Array.prototype.push=realPush;
+  ['pointerdown','keydown','touchstart','contextmenu','change'].forEach(function(t){document.removeEventListener(t,disarm,true)})}
+ ['pointerdown','keydown','touchstart','contextmenu','change'].forEach(function(t){document.addEventListener(t,disarm,true)});
+ setTimeout(disarm,8000);
+ window.__skRealPush=realPush;
+ window.__skReg={key:REG_KEY,load:loadReg,save:saveReg,nk:nk,uk:uk};
+})();
+</script>
+
+
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   
@@ -1595,6 +1648,7 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
     if(obj&&typeof obj==='object'&&Array.isArray(obj.tabs)&&!obj.trashBin){
      obj.trashBin=readJSON(TRASH_KEY,[]);
      obj.deletedMarks=(readJSON(SEC_KEY,{}).deleted)||{};
+     obj.removedDefaults=readJSON('sastakaam_removed_defaults_v1',[]);
      parts=[JSON.stringify(obj)];
     }
    }
@@ -1625,14 +1679,65 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
      tab.bookmarks=tab.bookmarks||[];
      var bm=item.bookmark||{id:'bm_'+Date.now().toString(36),name:item.name,url:item.url};
      var exists=tab.bookmarks.some(function(b){return b&&((bm.url&&b.url===bm.url)||(bm.id&&b.id===bm.id))});
-     if(!exists)tab.bookmarks.push(bm);
+     if(!exists){(window.__skRealPush||Array.prototype.push).call(tab.bookmarks,bm)}
      if(marks&&item.skKey)delete marks[item.skKey];
     });
+    if(Array.isArray(out.removedDefaults)&&window.__skReg){
+     var R=window.__skReg,back=out.trashBin.map(function(it){var b=(it&&it.bookmark)||{};return {n:R.nk(b.name||it.name),u:R.uk(b.url||it.url)}});
+     R.save(out.removedDefaults.filter(function(x){return !back.some(function(y){return (y.n&&y.n===x.n)||(y.u&&y.u===x.u)})}));
+    }
     localStorage.setItem(TRASH_KEY,'[]');
     if(marks){var sec=readJSON(SEC_KEY,{});sec.deleted=marks;localStorage.setItem(SEC_KEY,JSON.stringify(sec));}
    }
   }catch(err){}
   return out;
  };
+})();
+</script>
+
+<script id="sastaCardDeleteTrashPatch">
+/* Card par right-click -> delete icon. Delete hone par card Trash Bin (Recycle Bin) me jata hai. */
+(function(){
+ 'use strict';
+ var TRASH_KEY='sastakaam_trash_bin_v1';
+ var st=document.createElement('style');
+ st.textContent='.bookmark-card .bookmark-context-menu button[data-action="delete"]{display:inline-block!important;color:#ef4444!important}.bookmark-card .bookmark-context-menu button[data-action="delete"]:hover{background:#fee2e2!important;color:#dc2626!important}';
+ document.head.appendChild(st);
+ function load(){try{var x=JSON.parse(localStorage.getItem(TRASH_KEY)||'[]');return Array.isArray(x)?x:[]}catch(e){return[]}}
+ function nameOf(c){var n=c.querySelector('.bookmark-name');return n?(n.textContent||'').trim():'Bookmark'}
+ function urlOf(c){var a=c.querySelector('a[href]');return a?a.href:(c.dataset.url||'')}
+ function active(){var s;try{s=JSON.parse(localStorage.getItem('onepilot_v3')||'{}')}catch(e){s={}}
+  var el=document.querySelector('#tabsContainer .tab-item.active');var id=el&&el.getAttribute('data-tabid');
+  var t=(s.tabs||[]).find(function(x){return x.id===id})||null;
+  return {tab:t,tabId:id,tabName:t?t.name:(el?(el.textContent||'').trim():'Daily')}}
+ function snapshot(c){
+  var a=active(),nm=nameOf(c),u=urlOf(c),bm=null;
+  if(a.tab&&Array.isArray(a.tab.bookmarks))bm=a.tab.bookmarks.find(function(x){return x&&((u&&x.url===u)||x.name===nm)})||null;
+  if(bm)bm=JSON.parse(JSON.stringify(bm));
+  return {trashId:'tr_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,7),deletedAt:new Date().toISOString(),
+   tabId:a.tabId,tabName:a.tabName,skKey:c.dataset.skKey||'',name:nm,url:u,
+   bookmark:bm||{id:'bm_'+Date.now().toString(36),name:nm,url:u}};
+ }
+ function stillThere(s){
+  return [].slice.call(document.querySelectorAll('#bookmarksGrid .bookmark-card')).some(function(c){
+   return s.skKey?c.dataset.skKey===s.skKey:nameOf(c)===s.name});
+ }
+ function badge(){var b=document.getElementById('sastaTrashBtn');if(!b)return;var n=load().length;b.textContent='🗑 Trash'+(n?' ('+n+')':'')}
+ document.addEventListener('click',function(e){
+  var btn=e.target.closest&&e.target.closest('.bookmark-context-menu [data-action="delete"]');
+  if(!btn)return;
+  var card=btn.closest('.bookmark-card');if(!card)return;
+  var snap=snapshot(card),tries=0;
+  var timer=setInterval(function(){
+   tries++;
+   if(!stillThere(snap)){
+    clearInterval(timer);
+    var items=load();
+    var dup=items.some(function(x){return x.skKey&&x.skKey===snap.skKey&&x.name===snap.name&&Math.abs(new Date(x.deletedAt)-new Date(snap.deletedAt))<5000});
+    if(!dup){items.push(snap);localStorage.setItem(TRASH_KEY,JSON.stringify(items))}
+    badge();
+   }else if(tries>40){clearInterval(timer)} /* user ne cancel kar diya ya card locked tha */
+  },150);
+ },true);
 })();
 </script>
