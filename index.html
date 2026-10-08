@@ -1776,7 +1776,7 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
 /* Backup Reminder (din me ek baar, kone me) + optional Silent Auto Backup. */
 (function(){
  'use strict';
- var KEY='sastakaam_autobackup_v1', FP_KEY='sastakaam_default_fp_v1', SNOOZE_MS=4*3600*1000, auto=false;
+ var KEY='sastakaam_autobackup_v1', FP_KEY='sastakaam_default_fp_v1', SNOOZE_MS=1*3600*1000, auto=false;
  function pad(n){return n<10?'0'+n:''+n}
  function dayStr(d){d=d||new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
  function load(){var s={on:true,silent:false,last:null,lastDate:'',snoozeUntil:0};try{var x=JSON.parse(localStorage.getItem(KEY)||'{}');for(var k in x)s[k]=x[k]}catch(e){}return s}
@@ -1888,6 +1888,6 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
   if(s.on&&Date.now()>(s.snoozeUntil||0))showReminder();
  }
  setTimeout(check,4000);
- setInterval(check,30*60*1000);
+ setInterval(check,10*60*1000);
 })();
 </script>
