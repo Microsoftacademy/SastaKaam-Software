@@ -1891,3 +1891,129 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
  setInterval(check,10*60*1000);
 })();
 </script>
+
+
+<!-- Search-result bookmark context-menu fix: local bookmark results retain Edit/Delete actions. -->
+<style id="skSearchBookmarkActionsFix">
+  #skUnifiedCardGrid .sk-unified-card.sk-has-bookmark-actions {
+    position: relative;
+  }
+  #skUnifiedCardGrid .sk-unified-card .sk-search-context-menu {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    z-index: 5;
+    background: var(--bg2, #f9fafb);
+    border: 1px solid var(--border, #e5e7eb);
+    border-radius: 9px;
+    box-shadow: 0 5px 15px rgba(15,23,42,.18);
+    padding: 4px;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(-2px);
+    transition: opacity .15s ease, transform .15s ease;
+  }
+  #skUnifiedCardGrid .sk-unified-card.show-context-menu .sk-search-context-menu {
+    opacity: 1;
+    pointer-events: auto;
+    transform: none;
+  }
+  #skUnifiedCardGrid .sk-search-context-menu button {
+    appearance: none;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text3, #6b7280);
+    cursor: pointer;
+  }
+  #skUnifiedCardGrid .sk-search-context-menu button:hover {
+    background: var(--bg3, #f3f4f6);
+    color: var(--text2, #111827);
+  }
+  #skUnifiedCardGrid .sk-search-context-menu button[data-action="delete"] { color: #ef4444; }
+  #skUnifiedCardGrid .sk-search-context-menu button[data-action="delete"]:hover { background: #fee2e2; color: #dc2626; }
+  #skUnifiedCardGrid .sk-search-context-menu .material-icons { font-size: 18px; pointer-events: none; }
+</style>
+<script id="skSearchBookmarkActionsFixScript">
+(function(){
+  'use strict';
+  function closeMenus(except){
+    document.querySelectorAll('#skUnifiedCardGrid .sk-unified-card.show-context-menu').forEach(function(card){
+      if(card!==except)card.classList.remove('show-context-menu');
+    });
+  }
+  function invokeOriginalAction(item, action){
+    var source=item&&item.card;
+    if(!source)return;
+    var menu=source.querySelector('.bookmark-context-menu');
+    if(!menu)return;
+    var button=menu.querySelector('button[data-action="'+action+'"]');
+    if(!button){
+      var buttons=menu.querySelectorAll('button');
+      button=action==='edit'?buttons[0]:buttons[1];
+    }
+    if(button)button.click();
+  }
+  function addActions(card,item){
+    if(!item||item.kind!=='bookmark'||!item.card||card.querySelector('.sk-search-context-menu'))return;
+    card.classList.add('sk-has-bookmark-actions');
+    var menu=document.createElement('span');
+    menu.className='sk-search-context-menu';
+    menu.setAttribute('aria-label','Bookmark actions');
+    menu.innerHTML='<button type="button" data-action="edit" title="Edit bookmark" aria-label="Edit bookmark"><span class="material-icons">edit</span></button>'+
+                   '<button type="button" data-action="delete" title="Delete bookmark" aria-label="Delete bookmark"><span class="material-icons">delete</span></button>';
+    menu.querySelectorAll('button').forEach(function(button){
+      button.addEventListener('click',function(e){
+        e.preventDefault();
+        e.stopPropagation();
+        card.classList.remove('show-context-menu');
+        invokeOriginalAction(item,button.getAttribute('data-action'));
+      });
+    });
+    card.appendChild(menu);
+    card.addEventListener('contextmenu',function(e){
+      e.preventDefault();
+      e.stopPropagation();
+      closeMenus(card);
+      card.classList.add('show-context-menu');
+    });
+  }
+  document.addEventListener('click',function(e){
+    if(!e.target.closest || !e.target.closest('#skUnifiedCardGrid .sk-unified-card'))closeMenus();
+  },true);
+  document.addEventListener('contextmenu',function(e){
+    if(!e.target.closest || !e.target.closest('#skUnifiedCardGrid .sk-unified-card'))closeMenus();
+  },true);
+  document.addEventListener('keydown',function(e){if(e.key==='Escape')closeMenus()},true);
+  var originalAppend=window.__skSearchActionsRenderCards;
+  function watch(){
+    var area=document.getElementById('skUnifiedCardGrid');
+    if(!area)return setTimeout(watch,100);
+    var observer=new MutationObserver(function(){
+      var cards=area.querySelectorAll('.sk-unified-card');
+      cards.forEach(function(card){
+        if(card.dataset.skActionsBound==='1')return;
+        var name=(card.querySelector('.sk-unified-name')||{}).textContent||'';
+        var sourceCards=document.querySelectorAll('#bookmarksGrid .bookmark-card');
+        var source=[].slice.call(sourceCards).find(function(c){
+          var n=c.querySelector('.bookmark-name');
+          return n&&n.textContent.trim()===name.trim();
+        });
+        if(source)addActions(card,{kind:'bookmark',card:source});
+        card.dataset.skActionsBound='1';
+      });
+    });
+    observer.observe(area,{childList:true,subtree:true});
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',watch);else watch();
+})();
+</script>
