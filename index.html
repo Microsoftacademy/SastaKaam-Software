@@ -205,8 +205,8 @@
     button.backup-btn { background: #4b5563; }
     button#restoreBtn { background: #10b981; }
 
-    .tabs-container { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #e5e5e5; margin-bottom: 32px; padding-bottom: 5px; overflow-x: auto; }
-    .tab-item { padding: 10px 20px; font-size: 1rem; color: #6b7280; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; transition: 0.2s; display: flex; align-items: center; gap: 4px; }
+    .tabs-container { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; border-bottom: 1px solid #e5e5e5; margin-bottom: 32px; padding-bottom: 5px; overflow: visible; }
+    .tab-item { padding: 10px 20px; font-size: 1rem; color: #6b7280; cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; flex-shrink: 0; transition: 0.2s; display: flex; align-items: center; gap: 4px; }
     .tab-item.active { color: #4f46e5; border-bottom-color: #4f46e5; font-weight: 600; }
     .add-tab-btn { background: #f3f4f6; color: #4b5563; width: 35px; height: 35px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 20px; cursor: pointer; border: none; flex-shrink: 0; padding: 0; }
     .add-tab-btn:hover { background: #e5e7eb; }
@@ -1819,125 +1819,7 @@ var TOOLBOX_B64="PCFET0NUWVBFIGh0bWw+CjxodG1sIGxhbmc9ImVuIj4KCjxoZWFkPgoKCgoKCgo
 })();
 </script>
 
-<script id="sastaAutoBackupPatch">
-/* Backup Reminder (din me ek baar, kone me) + optional Silent Auto Backup. */
-(function(){
- 'use strict';
- var KEY='sastakaam_autobackup_v1', FP_KEY='sastakaam_default_fp_v1', SNOOZE_MS=1*3600*1000, auto=false;
- function pad(n){return n<10?'0'+n:''+n}
- function dayStr(d){d=d||new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())}
- function load(){var s={on:true,silent:false,last:null,lastDate:'',snoozeUntil:0};try{var x=JSON.parse(localStorage.getItem(KEY)||'{}');for(var k in x)s[k]=x[k]}catch(e){}return s}
- function save(s){try{localStorage.setItem(KEY,JSON.stringify(s))}catch(e){}}
- function timeStr(d){return d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'})}
- function fmt(iso){
-  if(!iso)return 'Abhi tak nahi hua';
-  var d=new Date(iso),n=new Date(),y=new Date(n.getTime()-864e5),t=timeStr(d);
-  if(dayStr(d)===dayStr(n))return 'Aaj '+t;
-  if(dayStr(d)===dayStr(y))return 'Kal '+t;
-  return d.toLocaleDateString()+' '+t;
- }
- /* ---- styles ---- */
- var st=document.createElement('style');
- st.textContent=
- '.skn-item.sab-item{box-sizing:border-box;position:relative!important;cursor:pointer;display:flex;align-items:center;gap:10px;width:100%;text-align:left}'+
- '.skn-item.sab-item .skn-lb{min-width:0;flex:1 1 auto;overflow:hidden;white-space:nowrap}.sab-item .sab-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block;font-size:.68rem;opacity:.7;font-weight:400;line-height:1.2;margin-top:1px}'+
- '.sab-item .sab-sw{margin-left:auto;width:34px;height:18px;flex:0 0 34px;border-radius:999px;background:#cbd5e1;position:relative;transition:.2s}'+
- '.sab-item .sab-sw::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:.2s}'+
- '.sab-item.on .sab-sw{background:#22c55e}.sab-item.on .sab-sw::after{left:18px}'+
- 'body.skn-collapsed .sab-item .sab-sw{display:none}'+
- 'body.skn-collapsed .skn-item.sab-item.on::after{content:"";position:absolute;top:6px;right:4px;width:9px;height:9px;border-radius:50%;background:#22c55e;border:2px solid #fff}'+
- '.sab-card{position:fixed;right:18px;bottom:18px;width:min(440px,calc(100vw - 24px));box-sizing:border-box;border-radius:14px;padding:16px 18px;z-index:2147483000;font-family:system-ui,Segoe UI,Arial,sans-serif;box-shadow:0 10px 30px rgba(0,0,0,.2);opacity:0;transform:translateY(12px);transition:opacity .25s,transform .25s}'+
- '.sab-card.show{opacity:1;transform:none}'+
- '.sab-card h4{margin:0 0 8px;font-size:15px;font-weight:800}.sab-card p{margin:0;font-size:13.5px;line-height:1.45}'+
- '.sab-rem{background:#fffbea;border:1px solid #fbbf24;color:#7c2d12}.sab-rem h4{color:#7c2d12}'+
- '.sab-ok{background:#ecfdf5;border:1px solid #6ee7b7;color:#065f46}.sab-ok h4{color:#064e3b}'+
- '.sab-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:14px}'+
- '.sab-btns button{border:0;border-radius:10px;padding:9px 16px;font-size:13.5px;font-weight:700;cursor:pointer}'+
- '.sab-later{background:#e5e7eb;color:#374151}.sab-now{background:#4f46e5;color:#fff}';
- document.head.appendChild(st);
- /* ---- chhote messages ---- */
- var okTimer=null;
- function removeCard(id){var c=document.getElementById(id);if(c){c.classList.remove('show');setTimeout(function(){c.remove()},300)}}
- function mkCard(id,cls,html){
-  removeCard(id);
-  var c=document.createElement('div');c.id=id;c.className='sab-card '+cls;c.innerHTML=html;document.body.appendChild(c);
-  requestAnimationFrame(function(){requestAnimationFrame(function(){c.classList.add('show')})});return c;
- }
- function showOk(title){
-  removeCard('sabRemind');
-  mkCard('sabOk','sab-ok','<h4>'+title+'</h4><p>Backup ho gaya. Downloads folder me file check kar lein.</p>');
-  clearTimeout(okTimer);okTimer=setTimeout(function(){removeCard('sabOk')},7000);
- }
- /* ---- backup record ---- */
- function markDone(){var s=load();s.last=new Date().toISOString();s.lastDate=dayStr();save(s);paint()}
- /* ---- sidebar items ---- */
- function paint(){
-  var s=load(),last=fmt(s.last);
-  var r=document.getElementById('sknBackupRemind'),a=document.getElementById('sknAutoBackup');
-  if(r){r.classList.toggle('on',!!s.on);r.querySelector('.sab-sub').textContent=s.on?('Last: '+(s.last?last:'Nahi hua')):'Band hai'}
-  if(a){a.classList.toggle('on',!!s.silent);a.querySelector('.sab-sub').textContent=s.silent?'Bina poochhe':'Band hai'}
- }
- function mkItem(id,label,title,prop,onMsg,offMsg){
-  var b=document.createElement('button');b.type='button';b.id=id;b.className='skn-item sab-item';
-  b.innerHTML='<span class="skn-ic"><img class="skn-img" src="https://cdn-icons-png.flaticon.com/128/10772/10772424.png" alt=""></span><span class="skn-lb">'+label+'<span class="sab-sub"></span></span><span class="sab-sw"></span>';
-  b.addEventListener('click',function(){var s=load();s[prop]=!s[prop];save(s);paint();
-   var m=s[prop]?onMsg:offMsg;mkCard('sabOk','sab-ok','<h4>'+title+'</h4><p>'+m+'</p>');clearTimeout(okTimer);okTimer=setTimeout(function(){removeCard('sabOk')},4000)});
-  return b;
- }
- function mount(){
-  var rs=document.getElementById('restoreBtn');
-  if(!rs||!rs.parentNode||rs.parentNode.id!=='sknScroll'||document.getElementById('sknBackupRemind'))return false;
-  var r=mkItem('sknBackupRemind','Reminder','Backup Reminder','on','ON: roz ek baar backup yaad dilaya jayega.','Reminder band kar diya.');
-  var a=mkItem('sknAutoBackup','Auto Backup','Silent Auto Backup','silent','ON: roz ek baar backup bina poochhe download hoga.','Silent Auto Backup band kar diya.');
-  rs.parentNode.insertBefore(r,rs.nextSibling);rs.parentNode.insertBefore(a,r.nextSibling);
-  paint();return true;
- }
- var tries=0,mt=setInterval(function(){tries++;if(mount()||tries>60)clearInterval(mt)},300);
- /* ---- koi bhi backup (button se) -> "aaj ka backup" ---- */
- document.addEventListener('click',function(e){
-  var t=e.target.closest&&e.target.closest('#backupBtn');
-  if(t&&!auto){markDone();showOk('Aaj ka backup: '+timeStr(new Date()))}
- },true);
- /* ---- naya dashboard (kuch badla nahi) ka backup/reminder nahi ---- */
- function fingerprint(){
-  try{var s=JSON.parse(localStorage.getItem('onepilot_v3')||'{}');
-   return (s.tabs||[]).map(function(t){return t.name+':'+(t.bookmarks||[]).map(function(b){return b.name+'|'+b.url}).sort().join(';')}).sort().join('#');
-  }catch(e){return ''}
- }
- function untouched(){
-  var fp=fingerprint(),saved=localStorage.getItem(FP_KEY);
-  if(saved===null&&window.__skFresh){try{localStorage.setItem(FP_KEY,fp)}catch(e){}return true}
-  return saved!==null&&saved===fp;
- }
- function busy(){return !!document.querySelector('.show-context-menu')}
- /* ---- silent backup ---- */
- function silentRun(){
-  var btn=document.getElementById('backupBtn');if(!btn)return;
-  var name='Auto-Backup-'+dayStr()+'.json',proto=HTMLAnchorElement.prototype,orig=proto.click;
-  proto.click=function(){try{if(this.download)this.download=name}catch(e){}proto.click=orig;return orig.apply(this,arguments)};
-  setTimeout(function(){if(proto.click!==orig)proto.click=orig},2000);
-  auto=true;
-  try{btn.dispatchEvent(new MouseEvent('click',{bubbles:false,cancelable:true,view:window}))}finally{auto=false}
-  markDone();showOk('Auto Backup: '+timeStr(new Date()));
- }
- /* ---- reminder ---- */
- function showReminder(){
-  if(document.getElementById('sabRemind'))return;
-  var c=mkCard('sabRemind','sab-rem','<h4>Aaj ka backup lazmi lein</h4><p>Aaj ka backup abhi nahi hua. Apna data safe rakhne ke liye Backup button dabayein.</p><div class="sab-btns"><button type="button" class="sab-later">Baad mein</button><button type="button" class="sab-now">Backup Now</button></div>');
-  c.querySelector('.sab-later').onclick=function(){var s=load();s.snoozeUntil=Date.now()+SNOOZE_MS;save(s);removeCard('sabRemind')};
-  c.querySelector('.sab-now').onclick=function(){removeCard('sabRemind');var b=document.getElementById('backupBtn');if(b)b.click()};
- }
- function check(){
-  var s=load();
-  if(s.lastDate===dayStr()||untouched())return;
-  if(busy()){setTimeout(check,10000);return}
-  if(s.silent){silentRun();return}
-  if(s.on&&Date.now()>(s.snoozeUntil||0))showReminder();
- }
- setTimeout(check,4000);
- setInterval(check,10*60*1000);
-})();
-</script>
+
 
 
 <!-- Search-result bookmark context-menu fix: local bookmark results retain Edit/Delete actions. -->
@@ -2205,6 +2087,243 @@ document.addEventListener('load',function(e){var f=e.target;if(f&&f.classList&&f
     window.addEventListener('storage',function(e){if(!e.key||e.key==='onepilot_v3')schedule()});
     document.addEventListener('change',function(e){if(e.target&&e.target.id==='restoreInput')setTimeout(sync,500)},true);
     setInterval(sync,1200);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+</script>
+<style id="skTabsRowFixStyle">
+  /* Default tabs ek line mein fit hon: tab padding kam, row ka gap chhota */
+  #tabsContainer { row-gap: 4px; }
+  #tabsContainer .tab-item { padding: 10px 12px; }
+  #tabsContainer .sk-tabs-break { flex-basis: 100%; width: 100%; height: 0; margin: 0; padding: 0; border: 0; }
+</style>
+<script id="skTabsRowFixScript">
+(function(){
+  'use strict';
+  /* Break sirf tab tabh lagta hai jab Software ke baad koi naya (user) tab ho.
+     Naye tab na hon to break nahi, taake + button aur default tabs ek hi line mein rahen. */
+  function ensureBreak(){
+    var c=document.getElementById('tabsContainer');
+    if(!c)return;
+    var sw=c.querySelector('[data-sk-software-tab="1"]');
+    if(!sw)return;
+    var br=c.querySelector('.sk-tabs-break');
+    var next=sw.nextElementSibling;
+    while(next&&next.classList.contains('sk-tabs-break'))next=next.nextElementSibling;
+    var needBreak=!!(next&&next.classList.contains('tab-item')&&!next.classList.contains('add-tab-btn')&&!next.hasAttribute('data-sk-toolbox-tab')&&!next.hasAttribute('data-sk-software-tab'));
+    if(needBreak){
+      if(br&&br.previousElementSibling===sw)return;
+      if(br)br.remove();
+      br=document.createElement('div');
+      br.className='sk-tabs-break';
+      br.setAttribute('aria-hidden','true');
+      sw.insertAdjacentElement('afterend',br);
+    }else if(br){
+      br.remove();
+    }
+  }
+  function init(){
+    var c=document.getElementById('tabsContainer');
+    if(!c)return setTimeout(init,100);
+    ensureBreak();
+    new MutationObserver(ensureBreak).observe(c,{childList:true});
+    setTimeout(ensureBreak,500);
+    setTimeout(ensureBreak,1500);
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+})();
+</script>
+<style id="skTabsHighlightFixStyle">
+  /* Active tab: purple background, white text, purple underline.
+     Baaqi tabs: purple text, koi background nahi. */
+  #tabsContainer .tab-item.active { background: #4f46e5 !important; color: #ffffff !important; border-bottom-color: #4f46e5 !important; border-radius: 8px 8px 0 0; }
+  #tabsContainer .tab-item:not(.active) { background: transparent !important; color: #4f46e5 !important; }
+</style>
+<style id="skTabsBoldFixStyle">
+  /* Sab tabs ka text bold */
+  #tabsContainer .tab-item { font-weight: 700 !important; }
+  /* Inactive tabs ka text black */
+  #tabsContainer .tab-item:not(.active) { color: #111827 !important; }
+</style>
+<style id="skBackupHistoryStyle">
+  #skBhModal { display: none; position: fixed; inset: 0; z-index: 99999; align-items: center; justify-content: center; padding: 20px; background: rgba(17,24,39,.55); }
+  #skBhModal.open { display: flex; }
+  #skBhBox { width: min(480px, 100%); max-height: 84vh; overflow-y: auto; background: var(--bg, #fff); color: var(--text, #374151); border-radius: 16px; padding: 22px; box-shadow: 0 20px 60px rgba(0,0,0,.3); }
+  #skBhBox h3 { margin: 0 0 4px; font-size: 1.05rem; color: var(--text2, #111827); }
+  #skBhBox .sk-bh-note { margin: 0 0 14px; font-size: .78rem; color: var(--text3, #6b7280); }
+  .sk-bh-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; margin-bottom: 8px; border: 1px solid var(--border, #e5e7eb); border-radius: 10px; background: var(--bg2, #f9fafb); }
+  .sk-bh-info b { display: block; font-size: .85rem; color: var(--text2, #111827); }
+  .sk-bh-info span { font-size: .75rem; color: var(--text3, #6b7280); }
+  .sk-bh-restore { border: 0; border-radius: 8px; padding: 7px 12px; background: #4f46e5; color: #fff; font-size: .78rem; font-weight: 700; cursor: pointer; white-space: nowrap; }
+  #skBhClose { float: right; border: 0; background: transparent; font-size: 22px; line-height: 1; cursor: pointer; color: var(--text3, #6b7280); }
+</style>
+<script id="skBackupHistoryScript">
+(function(){
+  'use strict';
+  /* Backup = poori localStorage ki copy (is site ki sab keys, history ko chhod kar).
+     Isi liye naye tabs/cards kisi bhi key mein hon, woh backup mein aate hain.
+     Har change ke 5 second baad (debounce) ek snapshot. Sirf aakhri 10 rakhe jate hain. */
+  var HIST_KEY='sastakaam_backup_history_v1', MAX=10, DEBOUNCE=5000;
+  var DATA_KEY='onepilot_v3', TAB_REG_KEY='sastakaam_removed_default_tabs_v1';
+  var timer=0;
+
+  function nk(s){return String(s||'').trim().toLowerCase().replace(/\s+/g,' ');}
+  function readHist(){
+    try{var h=JSON.parse(localStorage.getItem(HIST_KEY)||'[]');return Array.isArray(h)?h:[];}catch(e){return [];}
+  }
+  function writeHist(h){
+    while(true){
+      try{localStorage.setItem(HIST_KEY,JSON.stringify(h));return true;}
+      catch(e){
+        if(h.length<=1){console.warn('Backup history save nahi ho saki (storage bhari hui hai).');return false;}
+        h.pop();
+      }
+    }
+  }
+  function gatherAll(){
+    var all={};
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(k===null||k===HIST_KEY)continue;
+      all[k]=localStorage.getItem(k);
+    }
+    return all;
+  }
+  function summarize(str){
+    try{
+      var s=JSON.parse(str),tabs=Array.isArray(s.tabs)?s.tabs:[],b=0;
+      tabs.forEach(function(t){b+=(t.bookmarks||[]).length;});
+      return {tabs:tabs.length,bookmarks:b};
+    }catch(e){return {tabs:0,bookmarks:0};}
+  }
+  function snapshot(){
+    if(localStorage.getItem(DATA_KEY)===null)return;
+    var all=gatherAll();
+    var h=readHist();
+    if(h.length&&JSON.stringify(h[0].all)===JSON.stringify(all))return;
+    var sm=summarize(all[DATA_KEY]);
+    h.unshift({id:'b'+Date.now().toString(36),time:Date.now(),tabs:sm.tabs,bookmarks:sm.bookmarks,all:all});
+    if(h.length>MAX)h=h.slice(0,MAX);
+    writeHist(h);
+    refreshList();
+  }
+  function schedule(){
+    clearTimeout(timer);
+    timer=setTimeout(snapshot,DEBOUNCE);
+  }
+
+  /* Restore ke baad restored tabs ke tombstone (deleted records) hata do. */
+  function clearTombstonesFor(state){
+    if(!state||!Array.isArray(state.tabs))return;
+    var names={},ids={};
+    state.tabs.forEach(function(t){
+      if(!t)return;
+      names[nk(t.name)]=1;
+      if(t.id!=null)ids[String(t.id)]=1;
+    });
+    var reg=[];
+    try{reg=JSON.parse(localStorage.getItem(TAB_REG_KEY)||'[]');}catch(e){reg=[];}
+    if(!Array.isArray(reg))reg=[];
+    var kept=reg.filter(function(x){
+      if(!x)return false;
+      if(x.n&&names[x.n])return false;
+      if(x.id&&ids[String(x.id)])return false;
+      return true;
+    });
+    if(kept.length!==reg.length)localStorage.setItem(TAB_REG_KEY,JSON.stringify(kept));
+  }
+
+  var btn,modal,list;
+  function fmt(t){return new Date(t).toLocaleString();}
+  function refreshList(){
+    if(!list)return;
+    var h=readHist();
+    list.innerHTML='';
+    if(!h.length){
+      var p=document.createElement('p');p.className='sk-bh-note';p.textContent='Abhi koi backup nahi hai. Kuch change karein, 5 second baad backup ban jaye ga.';
+      list.appendChild(p);return;
+    }
+    h.forEach(function(e){
+      var row=document.createElement('div');row.className='sk-bh-row';
+      var info=document.createElement('div');info.className='sk-bh-info';
+      var b=document.createElement('b');b.textContent=fmt(e.time);
+      var sp=document.createElement('span');sp.textContent=e.tabs+' tabs · '+e.bookmarks+' bookmarks';
+      info.appendChild(b);info.appendChild(sp);
+      var r=document.createElement('button');r.type='button';r.className='sk-bh-restore';r.textContent='Restore';
+      r.addEventListener('click',function(){restore(e.id);});
+      row.appendChild(info);row.appendChild(r);list.appendChild(row);
+    });
+  }
+  function restore(id){
+    var h=readHist(),entry=null;
+    for(var i=0;i<h.length;i++){if(h[i].id===id){entry=h[i];break;}}
+    if(!entry||!entry.all)return;
+    if(!confirm('Yeh backup restore karein? Maujooda halat ka backup pehle save ho jaye ga.'))return;
+    clearTimeout(timer);
+    snapshot();
+    var want=entry.all;
+    /* 1) Jo keys backup mein nahi hain, unhe hata do (history ko chhod kar). */
+    var current=gatherAll();
+    Object.keys(current).forEach(function(k){
+      if(!(k in want))localStorage.removeItem(k);
+    });
+    /* 2) Backup ki keys wapas likho; app ka main data sab se aakhir mein. */
+    Object.keys(want).forEach(function(k){
+      if(k===DATA_KEY||want[k]===null)return;
+      localStorage.setItem(k,want[k]);
+    });
+    var state=null;
+    try{state=JSON.parse(want[DATA_KEY]);}catch(e){}
+    clearTombstonesFor(state);
+    if(want[DATA_KEY]!=null)localStorage.setItem(DATA_KEY,want[DATA_KEY]);
+    location.reload();
+  }
+  function open(){modal.classList.add('open');refreshList();}
+  function close(){modal.classList.remove('open');}
+
+  function mountNavItem(){
+    if(document.getElementById('skBhNavItem'))return true;
+    var anchor=document.getElementById('backupBtn');
+    if(!anchor||!anchor.parentNode)return false;
+    var b=document.createElement('button');
+    b.type='button';b.id='skBhNavItem';b.className='skn-item';
+    b.innerHTML='<span class="skn-ic"><img class="skn-img" src="https://cdn-icons-png.flaticon.com/128/18294/18294808.png" alt=""></span><span class="skn-lb">Backup History</span>';
+    b.addEventListener('click',open);
+    anchor.parentNode.insertBefore(b,anchor.nextSibling);
+    return true;
+  }
+  function build(){
+    modal=document.createElement('div');modal.id='skBhModal';
+    var box=document.createElement('div');box.id='skBhBox';
+    var x=document.createElement('button');x.id='skBhClose';x.type='button';x.textContent='\u00d7';x.setAttribute('aria-label','Close');
+    x.addEventListener('click',close);
+    var h3=document.createElement('h3');h3.textContent='Backup History';
+    var note=document.createElement('p');note.className='sk-bh-note';note.textContent='Aakhri 10 backups. Restore karne se pehle maujooda halat save ho jati hai.';
+    list=document.createElement('div');
+    box.appendChild(x);box.appendChild(h3);box.appendChild(note);box.appendChild(list);
+    modal.appendChild(box);
+    modal.addEventListener('click',function(e){if(e.target===modal)close();});
+    document.addEventListener('keydown',function(e){if(e.key==='Escape')close();});
+    document.body.appendChild(modal);
+  }
+
+  /* Koi bhi localStorage write (history ke alawa) par snapshot schedule karo. */
+  var proto=Storage.prototype,prevSet=proto.setItem,prevRem=proto.removeItem;
+  proto.setItem=function(k){
+    var r=prevSet.apply(this,arguments);
+    if(this===window.localStorage&&String(k)!==HIST_KEY)schedule();
+    return r;
+  };
+  proto.removeItem=function(k){
+    var r=prevRem.apply(this,arguments);
+    if(this===window.localStorage&&String(k)!==HIST_KEY)schedule();
+    return r;
+  };
+
+  function init(){
+    if(!document.body)return setTimeout(init,50);
+    build();
+    var tries=0,t=setInterval(function(){if(mountNavItem()||++tries>60)clearInterval(t);},500);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
 })();
